@@ -14,6 +14,7 @@ from database import connect, init_db
 
 BASE_DIR = Path(__file__).resolve().parent
 PRICE_RE = re.compile(r"^\d+(\.\d{1,2})?$")
+MAX_PRICE_CENTS = 10 ** 9  # 价格上限 10^9 分 = 1000 万元，防超长数字绑定 SQLite 溢出
 CONDITIONS = ("全新", "九成新", "八成新", "有使用痕迹")
 
 
@@ -44,6 +45,8 @@ def parse_price_yuan(value):
     cents = int(Decimal(value) * 100)
     if cents <= 0:
         raise ValueError("价格必须大于 0")
+    if cents > MAX_PRICE_CENTS:
+        raise ValueError("价格超出合理范围")
     return cents
 
 
@@ -52,7 +55,10 @@ def parse_price_filter(value):
     value = value.strip()
     if not PRICE_RE.fullmatch(value):
         raise ValueError("价格区间必须为合法数字")
-    return int(Decimal(value) * 100)
+    cents = int(Decimal(value) * 100)
+    if cents > MAX_PRICE_CENTS:
+        raise ValueError("价格超出合理范围")
+    return cents
 
 
 def with_display(row):
@@ -216,9 +222,12 @@ def create_app(test_config=None):
             if max_cents is not None:
                 sql += " AND i.price <= ?"
                 params.append(max_cents)
-            if category_id.isdigit():
-                exists = db.execute("SELECT id FROM categories WHERE id = ?",
-                                    (int(category_id),)).fetchone()
+            if category_id:
+                try:
+                    exists = db.execute("SELECT id FROM categories WHERE id = ?",
+                                        (int(category_id),)).fetchone()
+                except (ValueError, OverflowError):
+                    exists = None  # Unicode 数字、超长整数等一律按"分类不存在"忽略
                 if exists is not None:
                     sql += " AND i.category_id = ?"
                     params.append(exists["id"])

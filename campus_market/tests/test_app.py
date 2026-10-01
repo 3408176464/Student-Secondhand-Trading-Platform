@@ -130,6 +130,8 @@ class HelperTests(unittest.TestCase):
             parse_price_yuan("abc")
         with self.assertRaises(ValueError):
             parse_price_yuan("-5")
+        with self.assertRaises(ValueError):
+            parse_price_yuan("9" * 12)
 
 
 class AppTestCase(unittest.TestCase):
@@ -319,9 +321,13 @@ class MarketTests(AppTestCase):
         sid = self.register_user("seller1")
         self.insert_item(sid, "期末100%冲刺卷", 1000)
         self.insert_item(sid, "期末冲刺卷", 1000)
+        self.insert_item(sid, "100天复习计划", 1000)  # 含 100 但不含 100%
         body = self.client.get("/?q=100%").get_data(as_text=True)
         self.assertIn("期末100%冲刺卷", body)
         self.assertNotIn("期末冲刺卷", body)
+        self.assertNotIn("100天复习计划", body)  # 转义失效时 % 成通配符会误中它
+        body = self.client.get("/?q=100_").get_data(as_text=True)
+        self.assertNotIn("100天复习计划", body)  # 转义失效时 _ 成通配符会误中它
 
     def test_price_range_filter(self):
         sid = self.register_user("seller1")
@@ -353,14 +359,23 @@ class MarketTests(AppTestCase):
     def test_price_invalid_error(self):
         body = self.client.get("/?min_price=abc").get_data(as_text=True)
         self.assertIn("价格区间必须为合法数字", body)
+        # 超长数字不能 500，同样按非法输入提示
+        resp = self.client.get("/?min_price=" + "9" * 25)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("价格区间必须为合法数字", resp.get_data(as_text=True))
 
     def test_category_filter(self):
         sid = self.register_user("seller1")
         self.insert_item(sid, "教材甲", 1000, category_id=1)
+        self.insert_item(sid, "教材乙", 3000, category_id=1)
         self.insert_item(sid, "数码乙", 1000, category_id=2)
         body = self.client.get("/?category_id=1").get_data(as_text=True)
         self.assertIn("教材甲", body)
         self.assertNotIn("数码乙", body)
+        # 三条件组合：分类 + 关键词 + 价格
+        body = self.client.get("/?category_id=1&q=教材&min_price=20").get_data(as_text=True)
+        self.assertNotIn("教材甲", body)  # ¥10 < ¥20
+        self.assertIn("教材乙", body)
 
     def test_invalid_category_ignored(self):
         sid = self.register_user("seller1")
@@ -368,6 +383,11 @@ class MarketTests(AppTestCase):
         resp = self.client.get("/?category_id=999")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("商品甲", resp.get_data(as_text=True))
+        # Unicode 数字与超长整数同样按"不存在"忽略，不 500
+        for bad in ("²", "①", "9" * 30):
+            resp = self.client.get("/?category_id=" + bad)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("商品甲", resp.get_data(as_text=True))
 
     def test_sort_newest_first(self):
         sid = self.register_user("seller1")

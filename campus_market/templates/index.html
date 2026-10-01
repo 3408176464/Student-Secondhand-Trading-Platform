@@ -3,15 +3,16 @@
 {% block content %}
 <h1>商品市场</h1>
 <form method="get" class="filter-bar">
-  <input type="text" name="q" placeholder="搜索商品名">
-  <input type="text" name="min_price" placeholder="最低价">
-  <input type="text" name="max_price" placeholder="最高价">
+  <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="搜索商品名">
+  <input type="text" name="min_price" value="{{ request.args.get('min_price', '') }}" placeholder="最低价">
+  <input type="text" name="max_price" value="{{ request.args.get('max_price', '') }}" placeholder="最高价">
+  <input type="hidden" name="category_id" value="{{ request.args.get('category_id', '') }}">
   <button type="submit">筛选</button>
 </form>
 <p class="meta">
-  <a href="{{ url_for('index') }}">全部</a>
+  <a href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', '')) }}">全部</a>
   {% for c in categories %}
-    <a href="{{ url_for('index', category_id=c.id) }}">{{ c.name }}</a>
+    <a href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', ''), category_id=c.id) }}">{{ c.name }}</a>
   {% endfor %}
 </p>
 <ul class="item-list">
