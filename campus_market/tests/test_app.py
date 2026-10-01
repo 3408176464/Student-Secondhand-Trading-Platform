@@ -537,5 +537,57 @@ class PublishTests(AppTestCase):
         self.assertEqual(count, 0)
 
 
+class MyItemsTests(AppTestCase):
+    def _login_seller(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+
+    def test_edit_price_success(self):
+        self._login_seller()
+        self.create_item()
+        resp = self.client.post("/items/1/price", data={"price": "30.00"},
+                                follow_redirects=True)
+        self.assertIn("30.00", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT price FROM items WHERE id = 1")
+                         .fetchone()["price"], 3000)
+
+    def test_edit_price_non_owner_403(self):
+        self._login_seller()
+        self.create_item()
+        self.logout()
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        resp = self.client.post("/items/1/price", data={"price": "1.00"})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_edit_price_wrong_status_rejected(self):
+        self._login_seller()
+        self.create_item()
+        self.sql("UPDATE items SET status = '已预订' WHERE id = 1")
+        resp = self.client.post("/items/1/price", data={"price": "30.00"},
+                                follow_redirects=True)
+        self.assertIn("只有在售商品可以改价", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT price FROM items WHERE id = 1")
+                         .fetchone()["price"], 2500)
+
+    def test_delist_success(self):
+        self._login_seller()
+        self.create_item()
+        resp = self.client.post("/items/1/delist", follow_redirects=True)
+        self.assertIn("下架", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "下架")
+        self.assertNotIn("高等数学教材", self.client.get("/").get_data(as_text=True))
+
+    def test_delist_wrong_status_rejected(self):
+        self._login_seller()
+        self.create_item()
+        self.sql("UPDATE items SET status = '已售' WHERE id = 1")
+        resp = self.client.post("/items/1/delist", follow_redirects=True)
+        self.assertIn("只有在售商品可以下架", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已售")
+
+
 if __name__ == "__main__":
     unittest.main()

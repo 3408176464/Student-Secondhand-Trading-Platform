@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}我的商品{% endblock %}
+{% block content %}
+<h1>我的商品</h1>
+<table>
+  <tr><th>商品</th><th>价格</th><th>状态</th><th>发布时间</th><th>操作</th></tr>
+  {% for item in items %}
+  <tr>
+    <td><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.title }}</a></td>
+    <td>¥{{ item.price_display }}</td>
+    <td><span class="badge">{{ item.status }}</span></td>
+    <td>{{ item.created_at_local }}</td>
+    <td>
+      {% if item.status == '在售' %}
+      <form action="{{ url_for('edit_item_price', item_id=item.id) }}" method="post" class="inline">
+        <input name="price" value="{{ item.price_display }}" size="6">
+        <button type="submit">改价</button>
+      </form>
+      <form action="{{ url_for('delist_item', item_id=item.id) }}" method="post" class="inline">
+        <button type="submit" class="danger">下架（不可恢复）</button>
+      </form>
+      {% else %}—{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5">还没有发布商品</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

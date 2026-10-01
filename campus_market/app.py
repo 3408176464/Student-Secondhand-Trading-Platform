@@ -286,11 +286,62 @@ def create_app(test_config=None):
                     "status, category_id, seller_id) VALUES (?, ?, ?, ?, '在售', ?, ?)",
                     (title, price, condition, description,
                      valid_cat["id"], g.user["id"]))
-                return redirect(url_for("index"))  # Task 8 实现 my_items 后改回
+                return redirect(url_for("my_items"))
             flash(error)
         categories = db.execute("SELECT * FROM categories ORDER BY id").fetchall()
         return render_template("publish.html", categories=categories,
                                conditions=CONDITIONS)
+
+    @app.route("/my-items")
+    @login_required
+    def my_items():
+        rows = get_db().execute(
+            "SELECT i.*, c.name AS category_name FROM items i "
+            "JOIN categories c ON i.category_id = c.id WHERE i.seller_id = ? "
+            "ORDER BY i.created_at DESC, i.id DESC",
+            (g.user["id"],)).fetchall()
+        return render_template("my_items.html",
+                               items=[with_display(r) for r in rows])
+
+    def _get_owned_item_or_403(item_id):
+        item = get_db().execute("SELECT * FROM items WHERE id = ?",
+                                (item_id,)).fetchone()
+        if item is None:
+            abort(404)
+        if item["seller_id"] != g.user["id"]:
+            abort(403, description="只有商品发布者本人可以操作")
+        return item
+
+    @app.route("/items/<int:item_id>/price", methods=("POST",))
+    @login_required
+    def edit_item_price(item_id):
+        item = _get_owned_item_or_403(item_id)
+        if item["status"] != "在售":
+            flash("只有在售商品可以改价")
+            return redirect(url_for("my_items"))
+        try:
+            price = parse_price_yuan(request.form.get("price", ""))
+        except ValueError as exc:
+            flash(str(exc))
+            return redirect(url_for("my_items"))
+        cur = get_db().execute(
+            "UPDATE items SET price = ? WHERE id = ? AND status = '在售'",
+            (price, item_id))
+        if cur.rowcount == 0:
+            flash("商品状态已变更，改价失败")
+        return redirect(url_for("my_items"))
+
+    @app.route("/items/<int:item_id>/delist", methods=("POST",))
+    @login_required
+    def delist_item(item_id):
+        item = _get_owned_item_or_403(item_id)
+        if item["status"] != "在售":
+            flash("只有在售商品可以下架")
+            return redirect(url_for("my_items"))
+        get_db().execute(
+            "UPDATE items SET status = '下架' WHERE id = ? AND status = '在售'",
+            (item_id,))
+        return redirect(url_for("my_items"))
 
     return app
 
