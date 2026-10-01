@@ -1816,6 +1816,7 @@ class PlaceOrderTests(AppTestCase):
         order = self.sql("SELECT * FROM orders").fetchone()
         self.assertEqual(order["price"], 2500)
         self.assertEqual(order["status"], "待交易")
+        self.assertEqual(order["buyer_id"], self.user_id("buyer1"))
 
     def test_buy_own_item_rejected(self):
         self.register("seller1", "password123", "")
@@ -1845,6 +1846,8 @@ class PlaceOrderTests(AppTestCase):
         self.assertIn("商品已被买走或已下架", resp.get_data(as_text=True))
         self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
                          .fetchone()["n"], 1)
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已预订")
 
     def test_buy_requires_login(self):
         self.register("seller1", "password123", "")
@@ -1917,6 +1920,9 @@ def _rollback(db):
             _rollback(db)
             flash("商品已被买走或已下架")
             return redirect(url_for("index"))
+        except sqlite3.Error:
+            _rollback(db)  # 异常路径一律回滚（规格要求），再抛给 500 处理
+            raise
 ```
 
 跳转说明：失败路径回 `index`（买家可能被重定向到自己无权看的下架详情页）；「不能买自己的商品」回详情页（自己的商品自己可看）。成功路径本任务先回 `index`——`my_orders` Task 10 才有，提前 `url_for('my_orders')` 会 `BuildError`；Task 10 把成功跳转改到 `my_orders`。
@@ -2085,7 +2091,7 @@ Expected: FAIL（`/my-orders` 404）
             if cur.rowcount == 0:
                 _rollback(db)
                 flash("订单状态已变更，无法取消")
-                return redirect(request.referrer or url_for("index"))
+                return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
             cur2 = db.execute(
                 "UPDATE items SET status = '在售' WHERE id = ? AND status = '已预订'",
                 (order["item_id"],))
@@ -2097,7 +2103,7 @@ Expected: FAIL（`/my-orders` 404）
             _rollback(db)
             abort(500, description="数据异常，请稍后重试")
         flash("订单已取消")
-        return redirect(request.referrer or url_for("index"))
+        return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
 
     @app.route("/orders/<int:order_id>/confirm", methods=("POST",))
     @login_required
@@ -2112,7 +2118,7 @@ Expected: FAIL（`/my-orders` 404）
             if cur.rowcount == 0:
                 _rollback(db)
                 flash("订单状态已变更，无法确认")
-                return redirect(request.referrer or url_for("index"))
+                return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
             cur2 = db.execute(
                 "UPDATE items SET status = '已售' WHERE id = ? AND status = '已预订'",
                 (order["item_id"],))
@@ -2124,7 +2130,7 @@ Expected: FAIL（`/my-orders` 404）
             _rollback(db)
             abort(500, description="数据异常，请稍后重试")
         flash("交易已完成")
-        return redirect(request.referrer or url_for("index"))
+        return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
 ```
 
 `campus_market/templates/my_orders.html`:
