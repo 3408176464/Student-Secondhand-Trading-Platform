@@ -118,7 +118,7 @@ FROM orders o
 JOIN items i ON o.item_id = i.id
 JOIN users u ON o.buyer_id = u.id
 WHERE i.seller_id = ?
-ORDER BY o.created_at DESC;
+ORDER BY o.created_at DESC, o.id DESC;
 ```
 
 ### 索引
