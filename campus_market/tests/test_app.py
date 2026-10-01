@@ -500,11 +500,13 @@ class PublishTests(AppTestCase):
         self.login("seller1", "password123")
         resp = self.create_item()
         body = resp.get_data(as_text=True)
-        self.assertIn("高等数学教材", body)   # 落在我的商品页
+        self.assertIn("高等数学教材", body)   # 落地页展示商品（Task 8 前是市场页，Task 8 后是我的商品页）
         self.assertIn("25.00", body)
         row = self.sql("SELECT * FROM items").fetchone()
         self.assertEqual(row["price"], 2500)
         self.assertEqual(row["status"], "在售")
+        self.assertEqual(row["seller_id"], self.user_id("seller1"))
+        self.assertEqual(row["category_id"], 1)
 
     def test_publish_appears_on_market(self):
         self.register("seller1", "password123", "")
@@ -525,6 +527,7 @@ class PublishTests(AppTestCase):
         for bad in ("19.999", "abc", "-5"):
             resp = self.create_item(price=bad)
             self.assertIn("价格格式不合法", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM items").fetchone()["n"], 0)
 
     def test_publish_requires_login(self):
         resp = self.client.get("/publish")
