@@ -775,7 +775,8 @@ class SalesTests(AppTestCase):
         self._setup_order()
         self.client.post("/orders/1/cancel")
         body = self.client.get("/sales").get_data(as_text=True)
-        self.assertIn("已取消", body)
+        self.assertIn('<span class="badge">已取消</span>', body)  # 断言表格状态单元格，排除 flash 文案误命中
+        self.assertNotIn("拒绝订单", body)  # 终态只读，无操作按钮
 
     def test_seller_confirm_from_sales(self):
         self._setup_order()
