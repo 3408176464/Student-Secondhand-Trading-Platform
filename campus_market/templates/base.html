@@ -8,6 +8,14 @@
 <body>
 <nav>
   <a href="{{ url_for('index') }}">商品市场</a>
+  {% if g.user %}
+    <form action="{{ url_for('logout') }}" method="post" class="inline">
+      <button type="submit">登出</button>
+    </form>
+  {% else %}
+    <a href="{{ url_for('login') }}">登录</a>
+    <a href="{{ url_for('register') }}">注册</a>
+  {% endif %}
 </nav>
 <main>
   {% for message in get_flashed_messages() %}

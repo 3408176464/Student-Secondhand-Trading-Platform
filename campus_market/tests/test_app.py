@@ -193,5 +193,46 @@ class SmokeTests(AppTestCase):
         self.assertIn("资源不存在", resp.get_data(as_text=True))
 
 
+class AuthTests(AppTestCase):
+    def test_register_login_logout(self):
+        resp = self.register("alice", "password123", "wx_alice")
+        self.assertIn("登录", resp.get_data(as_text=True))
+        resp = self.login("alice", "password123")
+        self.assertIn("商品市场", resp.get_data(as_text=True))
+        resp = self.logout()
+        self.assertIn("登录", resp.get_data(as_text=True))
+
+    def test_register_duplicate_username(self):
+        self.register("alice", "password123", "")
+        resp = self.register("alice", "password456", "")
+        self.assertIn("用户名已存在", resp.get_data(as_text=True))
+
+    def test_register_strips_username(self):
+        self.register("  alice  ", "password123", "")
+        row = self.sql("SELECT username FROM users WHERE username = 'alice'").fetchone()
+        self.assertIsNotNone(row)
+
+    def test_username_case_sensitive(self):
+        self.register("Alice", "password123", "")
+        self.register("alice", "password123", "")
+        count = self.sql("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+        self.assertEqual(count, 2)
+
+    def test_register_short_password(self):
+        resp = self.register("bob", "12345", "")
+        self.assertIn("密码最短 6 位", resp.get_data(as_text=True))
+        count = self.sql("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+        self.assertEqual(count, 0)
+
+    def test_login_wrong_password_message(self):
+        self.register("alice", "password123", "")
+        resp = self.login("alice", "wrongpass")
+        self.assertIn("用户名或密码错误", resp.get_data(as_text=True))
+
+    def test_logout_post_only(self):
+        resp = self.client.get("/logout")
+        self.assertEqual(resp.status_code, 405)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -134,6 +134,49 @@ def create_app(test_config=None):
     def internal_error(e):
         return render_template("error.html", message=_zh(e, "数据异常，请稍后重试")), 500
 
+    @app.route("/register", methods=("GET", "POST"))
+    def register():
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            contact = request.form.get("contact", "").strip()
+            error = None
+            if not username:
+                error = "用户名不能为空"
+            elif len(password) < 6:
+                error = "密码最短 6 位"
+            if error is None:
+                try:
+                    get_db().execute(
+                        "INSERT INTO users (username, password, contact) VALUES (?, ?, ?)",
+                        (username, generate_password_hash(password), contact or None))
+                except sqlite3.IntegrityError:
+                    error = "用户名已存在"
+                else:
+                    return redirect(url_for("login"))
+            flash(error)
+        return render_template("register.html")
+
+    @app.route("/login", methods=("GET", "POST"))
+    def login():
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            user = get_db().execute(
+                "SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+            if user is None or not check_password_hash(user["password"], password):
+                flash("用户名或密码错误")
+            else:
+                session.clear()
+                session["user_id"] = user["id"]
+                return redirect(url_for("index"))
+        return render_template("login.html")
+
+    @app.route("/logout", methods=("POST",))
+    def logout():
+        session.clear()
+        return redirect(url_for("index"))
+
     @app.route("/")
     def index():
         return render_template("index.html", items=[], categories=[])
