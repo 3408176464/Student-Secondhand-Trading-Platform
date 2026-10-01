@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from database import connect, init_db  # noqa: E402
+from app import create_app, escape_like, format_price, to_local_time, parse_price_yuan
 
 
 class DatabaseTests(unittest.TestCase):
@@ -102,6 +103,93 @@ class DatabaseTests(unittest.TestCase):
         init_db(self.conn, seed=False)
         row = self.conn.execute("PRAGMA foreign_keys").fetchone()
         self.assertEqual(row[0], 1)
+
+
+class HelperTests(unittest.TestCase):
+    def test_format_price(self):
+        self.assertEqual(format_price(1), "0.01")
+        self.assertEqual(format_price(1999), "19.99")
+        self.assertEqual(format_price(10000), "100.00")
+
+    def test_to_local_time(self):
+        self.assertEqual(to_local_time("2026-10-01 04:00:00"), "2026-10-01 12:00:00")
+
+    def test_escape_like(self):
+        self.assertEqual(escape_like("100%_a\\b"), "100\\%\\_a\\\\b")
+
+    def test_parse_price_yuan(self):
+        self.assertEqual(parse_price_yuan("19.99"), 1999)
+        self.assertEqual(parse_price_yuan("0.01"), 1)
+        with self.assertRaises(ValueError):
+            parse_price_yuan("0")
+        with self.assertRaises(ValueError):
+            parse_price_yuan("0.00")
+        with self.assertRaises(ValueError):
+            parse_price_yuan("19.999")
+        with self.assertRaises(ValueError):
+            parse_price_yuan("abc")
+        with self.assertRaises(ValueError):
+            parse_price_yuan("-5")
+
+
+class AppTestCase(unittest.TestCase):
+    """应用级测试基类：临时数据库 + 测试客户端 + 常用辅助方法。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db_path = str(Path(self.tmp.name) / "test.db")
+        self.app = create_app({
+            "TESTING": True,
+            "SECRET_KEY": "test",
+            "DATABASE": db_path,
+            "SEED_DATA": False,
+        })
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        if hasattr(self, "_conn"):
+            self._conn.close()
+        self.tmp.cleanup()
+
+    def register(self, username="buyer1", password="password123", contact="wx123"):
+        return self.client.post("/register", data={
+            "username": username, "password": password, "contact": contact,
+        }, follow_redirects=True)
+
+    def login(self, username="buyer1", password="password123"):
+        return self.client.post("/login", data={
+            "username": username, "password": password,
+        }, follow_redirects=True)
+
+    def logout(self):
+        return self.client.post("/logout", follow_redirects=True)
+
+    def sql(self, stmt, params=()):
+        # 连接缓存到用例生命周期，调用方才 fetchone()/fetchall() 有效
+        if not hasattr(self, "_conn"):
+            self._conn = connect(self.app.config["DATABASE"])
+        return self._conn.execute(stmt, params)
+
+    def user_id(self, username):
+        return self.sql("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+
+    def insert_item(self, seller_id, title, price, status="在售", category_id=1,
+                    condition="九成新", created_at="2026-10-01 12:00:00"):
+        self.sql(
+            "INSERT INTO items (title, price, condition, description, status, "
+            "category_id, seller_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (title, price, condition, "desc", status, category_id, seller_id, created_at))
+
+
+class SmokeTests(AppTestCase):
+    def test_index_ok(self):
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("商品市场", resp.get_data(as_text=True))
+
+    def test_error_page_404(self):
+        resp = self.client.get("/no-such-page")
+        self.assertEqual(resp.status_code, 404)
 
 
 if __name__ == "__main__":

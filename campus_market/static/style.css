@@ -1,0 +1,24 @@
+body { font-family: sans-serif; margin: 0; background: #f6f7f9; color: #222; }
+nav { background: #2c6eaf; padding: 10px 16px; display: flex; gap: 14px; align-items: center; }
+nav a { color: #fff; text-decoration: none; }
+nav form.inline { display: inline; margin-left: auto; }
+nav button { background: #fff; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+main { max-width: 900px; margin: 16px auto; padding: 0 16px; }
+.flash { background: #fff3cd; border: 1px solid #ffe08a; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+.filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-bar input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; }
+.item-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.item-card { background: #fff; border: 1px solid #e2e4e8; border-radius: 6px; padding: 12px; }
+.item-card h3 { margin: 0 0 6px; font-size: 16px; }
+.price { color: #c0392b; font-weight: bold; }
+.meta { color: #777; font-size: 13px; }
+form.inline { display: inline; }
+button { padding: 6px 12px; border: 0; border-radius: 4px; background: #2c6eaf; color: #fff; cursor: pointer; }
+button.danger { background: #c0392b; }
+table { width: 100%; border-collapse: collapse; background: #fff; }
+th, td { border: 1px solid #e2e4e8; padding: 8px 10px; text-align: left; font-size: 14px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #eee; }
+.badge.on-sale { background: #d4edda; }
+.badge.reserved { background: #fff3cd; }
+.badge.sold { background: #d6eaff; }
+.badge.off { background: #f8d7da; }

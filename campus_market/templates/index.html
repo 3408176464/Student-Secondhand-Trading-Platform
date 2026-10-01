@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}商品市场{% endblock %}
+{% block content %}
+<h1>商品市场</h1>
+<form method="get" class="filter-bar">
+  <input type="text" name="q" placeholder="搜索商品名">
+  <input type="text" name="min_price" placeholder="最低价">
+  <input type="text" name="max_price" placeholder="最高价">
+  <button type="submit">筛选</button>
+</form>
+<ul class="item-list">
+  {% for item in items %}
+  <li>{{ item.title }}</li>
+  {% else %}
+  <li>暂无商品</li>
+  {% endfor %}
+</ul>
+{% endblock %}
