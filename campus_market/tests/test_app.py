@@ -434,7 +434,9 @@ class DetailTests(AppTestCase):
         self.insert_item(sid, "买走的商品", 1000, status="已售")
         self.sql("INSERT INTO orders (item_id, buyer_id, price, status) "
                  "VALUES (5, ?, 1000, '已完成')", (self.user_id("buyer1"),))
-        self.assertIn("买走的商品", self.client.get("/items/5").get_data(as_text=True))
+        resp = self.client.get("/items/5")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("买走的商品", resp.get_data(as_text=True))
 
     def test_delisted_404_for_anon_and_others(self):
         self._seller_with_items()
@@ -442,6 +444,9 @@ class DetailTests(AppTestCase):
         self.register("buyer1", "password123", "")
         self.login("buyer1", "password123")
         self.assertEqual(self.client.get("/items/4").status_code, 404)
+        # 与不存在 id 的响应完全一致：不泄露"曾经存在但已下架"
+        self.assertEqual(self.client.get("/items/4").get_data(),
+                         self.client.get("/items/999").get_data())
 
     def test_delisted_visible_to_owner(self):
         sid = self._seller_with_items()
