@@ -669,7 +669,7 @@ class AuthTests(AppTestCase):
         resp = self.register("alice", "password123", "wx_alice")
         self.assertIn("登录", resp.get_data(as_text=True))
         resp = self.login("alice", "password123")
-        self.assertIn("商品市场", resp.get_data(as_text=True))
+        self.assertIn("登出", resp.get_data(as_text=True))  # 「登出」只在登录态渲染，验证 session 真的建立了
         resp = self.logout()
         self.assertIn("登录", resp.get_data(as_text=True))
 
