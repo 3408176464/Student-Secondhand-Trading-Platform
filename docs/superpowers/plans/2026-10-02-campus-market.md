@@ -319,6 +319,8 @@ class HelperTests(unittest.TestCase):
             parse_price_yuan("abc")
         with self.assertRaises(ValueError):
             parse_price_yuan("-5")
+        with self.assertRaises(ValueError):
+            parse_price_yuan("9" * 12)  # 超长数字按超范围拒绝，不溢出
 
 
 class AppTestCase(unittest.TestCase):
@@ -409,6 +411,7 @@ from database import connect, init_db
 BASE_DIR = Path(__file__).resolve().parent
 PRICE_RE = re.compile(r"^\d+(\.\d{1,2})?$")
 CONDITIONS = ("全新", "九成新", "八成新", "有使用痕迹")
+MAX_PRICE_CENTS = 10 ** 9  # 价格上限 10^9 分 = 1000 万元，防超长数字绑定 SQLite 溢出
 
 
 # ---------- 工具函数 ----------
@@ -438,6 +441,8 @@ def parse_price_yuan(value):
     cents = int(Decimal(value) * 100)
     if cents <= 0:
         raise ValueError("价格必须大于 0")
+    if cents > MAX_PRICE_CENTS:
+        raise ValueError("价格超出合理范围")
     return cents
 
 
@@ -446,7 +451,10 @@ def parse_price_filter(value):
     value = value.strip()
     if not PRICE_RE.fullmatch(value):
         raise ValueError("价格区间必须为合法数字")
-    return int(Decimal(value) * 100)
+    cents = int(Decimal(value) * 100)
+    if cents > MAX_PRICE_CENTS:
+        raise ValueError("价格超出合理范围")
+    return cents
 
 
 def with_display(row):
@@ -1025,9 +1033,13 @@ class MarketTests(AppTestCase):
         sid = self.register_user("seller1")
         self.insert_item(sid, "期末100%冲刺卷", 1000)
         self.insert_item(sid, "期末冲刺卷", 1000)
+        self.insert_item(sid, "100天复习计划", 1000)  # 含 100 但不含 100%
         body = self.client.get("/?q=100%").get_data(as_text=True)
         self.assertIn("期末100%冲刺卷", body)
         self.assertNotIn("期末冲刺卷", body)
+        self.assertNotIn("100天复习计划", body)  # 转义失效时 % 成通配符会误中它
+        body = self.client.get("/?q=100_").get_data(as_text=True)
+        self.assertNotIn("100天复习计划", body)  # 转义失效时 _ 成通配符会误中它
 
     def test_price_range_filter(self):
         sid = self.register_user("seller1")
@@ -1059,14 +1071,23 @@ class MarketTests(AppTestCase):
     def test_price_invalid_error(self):
         body = self.client.get("/?min_price=abc").get_data(as_text=True)
         self.assertIn("价格区间必须为合法数字", body)
+        # 超长数字不能 500，同样按非法输入提示
+        resp = self.client.get("/?min_price=" + "9" * 25)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("价格区间必须为合法数字", resp.get_data(as_text=True))
 
     def test_category_filter(self):
         sid = self.register_user("seller1")
         self.insert_item(sid, "教材甲", 1000, category_id=1)
+        self.insert_item(sid, "教材乙", 3000, category_id=1)
         self.insert_item(sid, "数码乙", 1000, category_id=2)
         body = self.client.get("/?category_id=1").get_data(as_text=True)
         self.assertIn("教材甲", body)
         self.assertNotIn("数码乙", body)
+        # 三条件组合：分类 + 关键词 + 价格
+        body = self.client.get("/?category_id=1&q=教材&min_price=20").get_data(as_text=True)
+        self.assertNotIn("教材甲", body)  # ¥10 < ¥20
+        self.assertIn("教材乙", body)
 
     def test_invalid_category_ignored(self):
         sid = self.register_user("seller1")
@@ -1074,6 +1095,11 @@ class MarketTests(AppTestCase):
         resp = self.client.get("/?category_id=999")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("商品甲", resp.get_data(as_text=True))
+        # Unicode 数字与超长整数同样按"不存在"忽略，不 500
+        for bad in ("²", "①", "9" * 30):
+            resp = self.client.get("/?category_id=" + bad)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("商品甲", resp.get_data(as_text=True))
 
     def test_sort_newest_first(self):
         sid = self.register_user("seller1")
@@ -1140,9 +1166,12 @@ Expected: FAIL（列表为空、断言找不到商品名）
             if max_cents is not None:
                 sql += " AND i.price <= ?"
                 params.append(max_cents)
-            if category_id.isdigit():
-                exists = db.execute("SELECT id FROM categories WHERE id = ?",
-                                    (int(category_id),)).fetchone()
+            if category_id:
+                try:
+                    exists = db.execute("SELECT id FROM categories WHERE id = ?",
+                                        (int(category_id),)).fetchone()
+                except (ValueError, OverflowError):
+                    exists = None  # Unicode 数字、超长整数等一律按"分类不存在"忽略
                 if exists is not None:
                     sql += " AND i.category_id = ?"
                     params.append(exists["id"])
@@ -1160,15 +1189,16 @@ Expected: FAIL（列表为空、断言找不到商品名）
 {% block content %}
 <h1>商品市场</h1>
 <form method="get" class="filter-bar">
-  <input type="text" name="q" placeholder="搜索商品名">
-  <input type="text" name="min_price" placeholder="最低价">
-  <input type="text" name="max_price" placeholder="最高价">
+  <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="搜索商品名">
+  <input type="text" name="min_price" value="{{ request.args.get('min_price', '') }}" placeholder="最低价">
+  <input type="text" name="max_price" value="{{ request.args.get('max_price', '') }}" placeholder="最高价">
+  <input type="hidden" name="category_id" value="{{ request.args.get('category_id', '') }}">
   <button type="submit">筛选</button>
 </form>
 <p class="meta">
-  <a href="{{ url_for('index') }}">全部</a>
+  <a href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', '')) }}">全部</a>
   {% for c in categories %}
-    <a href="{{ url_for('index', category_id=c.id) }}">{{ c.name }}</a>
+    <a href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', ''), category_id=c.id) }}">{{ c.name }}</a>
   {% endfor %}
 </p>
 <ul class="item-list">
