@@ -1268,6 +1268,21 @@ class DetailTests(AppTestCase):
             self.assertEqual(resp.status_code, 302)
             self.assertIn("/login", resp.headers["Location"])
 
+    def test_logged_in_can_view_reserved_sold(self):
+        sid = self._seller_with_items()
+        # 登录的无关用户可看（订单页跳回路径）
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        for path, title in (("/items/2", "已预订商品"), ("/items/3", "已售商品")):
+            resp = self.client.get(path)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(title, resp.get_data(as_text=True))
+        # 买家看自己买到的已售商品同样可看
+        self.insert_item(sid, "买走的商品", 1000, status="已售")
+        self.sql("INSERT INTO orders (item_id, buyer_id, price, status) "
+                 "VALUES (5, ?, 1000, '已完成')", (self.user_id("buyer1"),))
+        self.assertIn("买走的商品", self.client.get("/items/5").get_data(as_text=True))
+
     def test_delisted_404_for_anon_and_others(self):
         self._seller_with_items()
         self.assertEqual(self.client.get("/items/4").status_code, 404)
@@ -1302,6 +1317,16 @@ class DetailTests(AppTestCase):
         self.login("buyer1", "password123")
         body = self.client.get("/items/1").get_data(as_text=True)
         self.assertIn("卖家未填写联系方式", body)
+        # 有联系方式的卖家：显示真实值
+        self.logout()
+        self.register("seller2", "password123", "wx_seller2")
+        self.login("seller2", "password123")
+        sid2 = self.user_id("seller2")
+        self.insert_item(sid2, "卖家2的书", 1000)
+        self.logout()
+        self.login("buyer1", "password123")
+        body = self.client.get("/items/5").get_data(as_text=True)
+        self.assertIn("wx_seller2", body)
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -1327,7 +1352,7 @@ Expected: FAIL（`/items/1` 返回 404）
             abort(404)
         if item["status"] == "下架":
             if g.user is None or g.user["id"] != item["seller_id"]:
-                abort(404, description="商品已下架")
+                abort(404)  # 不带文案：透露"已下架"会泄露商品存在性，违背下架即隐藏
         elif item["status"] in ("已预订", "已售") and g.user is None:
             return redirect(url_for("login"))
         can_buy = (g.user is not None and item["status"] == "在售"
@@ -1369,7 +1394,7 @@ Expected: FAIL（`/items/1` 返回 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 42 tests ... OK`
+Expected: `Ran 43 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -1536,7 +1561,7 @@ Expected: FAIL（`/publish` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 47 tests ... OK`
+Expected: `Ran 48 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -1729,7 +1754,7 @@ Expected: FAIL（`/my-items` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 52 tests ... OK`
+Expected: `Ran 53 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -1890,7 +1915,7 @@ def _rollback(db):
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 57 tests ... OK`
+Expected: `Ran 58 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -2144,7 +2169,7 @@ Expected: FAIL（`/my-orders` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 66 tests ... OK`
+Expected: `Ran 67 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -2298,7 +2323,7 @@ Expected: FAIL（`/sales` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 70 tests ... OK`
+Expected: `Ran 71 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -2457,7 +2482,7 @@ Python + Flask + SQLite 的校园二手交易网站（数据库原理课程作�
 - [ ] **Step 4: 全量测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 76 tests ... OK`（全部用例通过，0 失败）
+Expected: `Ran 77 tests ... OK`（全部用例通过，0 失败）
 
 - [ ] **Step 5: 手工冒烟验证**
 
