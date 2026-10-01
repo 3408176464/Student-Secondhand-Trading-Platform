@@ -234,5 +234,41 @@ class AuthTests(AppTestCase):
         self.assertEqual(resp.status_code, 405)
 
 
+class SeedTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db_path = str(Path(self.tmp.name) / "seed.db")
+        self.app = create_app({
+            "TESTING": True, "SECRET_KEY": "test",
+            "DATABASE": db_path, "SEED_DATA": True,
+        })
+        self.conn = connect(db_path)
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def test_seed_counts(self):
+        users = self.conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+        items = self.conn.execute("SELECT COUNT(*) AS n FROM items").fetchone()["n"]
+        self.assertEqual(users, 10)
+        self.assertEqual(items, 30)
+
+    def test_seed_status_consistency(self):
+        rows = self.conn.execute(
+            "SELECT o.status AS os, i.status AS is_ FROM orders o "
+            "JOIN items i ON o.item_id = i.id").fetchall()
+        expect = {"待交易": "已预订", "已完成": "已售", "已取消": "在售"}
+        for r in rows:
+            self.assertEqual(r["is_"], expect[r["os"]])
+
+    def test_seed_buyer_not_seller(self):
+        rows = self.conn.execute(
+            "SELECT o.buyer_id, i.seller_id FROM orders o "
+            "JOIN items i ON o.item_id = i.id").fetchall()
+        for r in rows:
+            self.assertNotEqual(r["buyer_id"], r["seller_id"])
+
+
 if __name__ == "__main__":
     unittest.main()
