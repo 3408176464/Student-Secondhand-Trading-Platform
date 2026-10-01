@@ -251,8 +251,10 @@ class SeedTests(unittest.TestCase):
     def test_seed_counts(self):
         users = self.conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
         items = self.conn.execute("SELECT COUNT(*) AS n FROM items").fetchone()["n"]
+        orders = self.conn.execute("SELECT COUNT(*) AS n FROM orders").fetchone()["n"]
         self.assertEqual(users, 10)
         self.assertEqual(items, 30)
+        self.assertEqual(orders, 12)
 
     def test_seed_status_consistency(self):
         rows = self.conn.execute(
@@ -261,6 +263,17 @@ class SeedTests(unittest.TestCase):
         expect = {"待交易": "已预订", "已完成": "已售", "已取消": "在售"}
         for r in rows:
             self.assertEqual(r["is_"], expect[r["os"]])
+        # 反向：每件已预订/已售商品恰有对应状态的订单，成交价快照等于商品价
+        for item_status, order_status in (("已预订", "待交易"), ("已售", "已完成")):
+            orphan = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM items i WHERE i.status = ? "
+                "AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.item_id = i.id "
+                "AND o.status = ?)", (item_status, order_status)).fetchone()["n"]
+            self.assertEqual(orphan, 0)
+        bad_price = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM orders o JOIN items i ON o.item_id = i.id "
+            "WHERE o.price != i.price").fetchone()["n"]
+        self.assertEqual(bad_price, 0)
 
     def test_seed_buyer_not_seller(self):
         rows = self.conn.execute(
@@ -268,6 +281,13 @@ class SeedTests(unittest.TestCase):
             "JOIN items i ON o.item_id = i.id").fetchall()
         for r in rows:
             self.assertNotEqual(r["buyer_id"], r["seller_id"])
+        # 每人都既买又卖（设计规格要求）
+        buyers = {r["buyer_id"] for r in self.conn.execute(
+            "SELECT DISTINCT buyer_id FROM orders")}
+        sellers = {r["seller_id"] for r in self.conn.execute(
+            "SELECT DISTINCT seller_id FROM items")}
+        self.assertEqual(buyers, set(range(1, 11)))
+        self.assertEqual(sellers, set(range(1, 11)))
 
 
 if __name__ == "__main__":
