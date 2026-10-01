@@ -257,6 +257,41 @@ def create_app(test_config=None):
         return render_template("item_detail.html", item=with_display(item),
                                can_buy=can_buy)
 
+    @app.route("/publish", methods=("GET", "POST"))
+    @login_required
+    def publish():
+        db = get_db()
+        if request.method == "POST":
+            title = request.form.get("title", "").strip()
+            condition = request.form.get("condition", "")
+            description = request.form.get("description", "").strip()
+            category_id = request.form.get("category_id", "")
+            error = None
+            try:
+                price = parse_price_yuan(request.form.get("price", ""))
+            except ValueError as exc:
+                price = 0
+                error = str(exc)
+            if not title:
+                error = error or "商品名不能为空"
+            if condition not in CONDITIONS:
+                error = error or "成色不合法"
+            valid_cat = db.execute("SELECT id FROM categories WHERE id = ?",
+                                   (category_id,)).fetchone()
+            if valid_cat is None:
+                error = error or "分类不合法"
+            if error is None:
+                db.execute(
+                    "INSERT INTO items (title, price, condition, description, "
+                    "status, category_id, seller_id) VALUES (?, ?, ?, ?, '在售', ?, ?)",
+                    (title, price, condition, description,
+                     valid_cat["id"], g.user["id"]))
+                return redirect(url_for("index"))  # Task 8 实现 my_items 后改回
+            flash(error)
+        categories = db.execute("SELECT * FROM categories ORDER BY id").fetchall()
+        return render_template("publish.html", categories=categories,
+                               conditions=CONDITIONS)
+
     return app
 
 

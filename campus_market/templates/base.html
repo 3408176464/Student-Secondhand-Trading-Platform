@@ -9,6 +9,7 @@
 <nav>
   <a href="{{ url_for('index') }}">商品市场</a>
   {% if g.user %}
+    <a href="{{ url_for('publish') }}">发布商品</a>
     <form action="{{ url_for('logout') }}" method="post" class="inline">
       <button type="submit">登出</button>
     </form>

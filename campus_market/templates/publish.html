@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}发布商品{% endblock %}
+{% block content %}
+<h1>发布商品</h1>
+<form method="post">
+  <p><label>商品名 <input name="title" required></label></p>
+  <p><label>分类
+    <select name="category_id">
+      {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+  </label></p>
+  <p><label>价格（元）<input name="price" placeholder="25.00" required></label></p>
+  <p><label>成色
+    <select name="condition">
+      {% for c in conditions %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+    </select>
+  </label></p>
+  <p><label>描述 <textarea name="description"></textarea></label></p>
+  <button type="submit">发布</button>
+</form>
+{% endblock %}

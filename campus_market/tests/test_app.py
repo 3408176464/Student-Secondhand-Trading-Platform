@@ -186,6 +186,13 @@ class AppTestCase(unittest.TestCase):
         self.register(username, "password123", "")
         return self.user_id(username)
 
+    def create_item(self, title="高等数学教材", price="25.00", category_id=1,
+                    condition="九成新", description="有少量笔记"):
+        return self.client.post("/publish", data={
+            "title": title, "price": price, "category_id": category_id,
+            "condition": condition, "description": description,
+        }, follow_redirects=True)
+
 
 class SmokeTests(AppTestCase):
     def test_index_ok(self):
@@ -485,6 +492,46 @@ class DetailTests(AppTestCase):
         self.login("buyer1", "password123")
         body = self.client.get("/items/5").get_data(as_text=True)
         self.assertIn("wx_seller2", body)
+
+
+class PublishTests(AppTestCase):
+    def test_publish_success(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        resp = self.create_item()
+        body = resp.get_data(as_text=True)
+        self.assertIn("高等数学教材", body)   # 落在我的商品页
+        self.assertIn("25.00", body)
+        row = self.sql("SELECT * FROM items").fetchone()
+        self.assertEqual(row["price"], 2500)
+        self.assertEqual(row["status"], "在售")
+
+    def test_publish_appears_on_market(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item()
+        self.assertIn("高等数学教材", self.client.get("/").get_data(as_text=True))
+
+    def test_publish_price_zero_rejected(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        resp = self.create_item(price="0.00")
+        self.assertIn("价格必须大于 0", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM items").fetchone()["n"], 0)
+
+    def test_publish_price_format_rejected(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        for bad in ("19.999", "abc", "-5"):
+            resp = self.create_item(price=bad)
+            self.assertIn("价格格式不合法", resp.get_data(as_text=True))
+
+    def test_publish_requires_login(self):
+        resp = self.client.get("/publish")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
+        count = self.sql("SELECT COUNT(*) AS n FROM items").fetchone()["n"]
+        self.assertEqual(count, 0)
 
 
 if __name__ == "__main__":
