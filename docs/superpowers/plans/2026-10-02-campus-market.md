@@ -281,6 +281,7 @@ git commit -m "feat: 数据库骨架——建表、约束、索引与连接层"
 ### Task 2: app 工厂、工具函数、错误页、页面骨架
 
 **Files:**
+- Create: `.gitignore`（仓库根）
 - Create: `campus_market/app.py`
 - Create: `campus_market/templates/base.html`
 - Create: `campus_market/templates/error.html`
@@ -470,7 +471,12 @@ def create_app(test_config=None):
     db_path = Path(app.config["DATABASE"])
     if not db_path.exists() or db_path.stat().st_size == 0:
         conn = connect(db_path)
-        init_db(conn, seed=app.config["SEED_DATA"])
+        try:
+            init_db(conn, seed=app.config["SEED_DATA"])
+        except Exception:
+            conn.close()
+            db_path.unlink(missing_ok=True)  # 初始化失败不留半成品库，否则会被误判为已初始化
+            raise
         conn.close()
 
     def get_db():
@@ -588,6 +594,15 @@ if __name__ == "__main__":
 {% endblock %}
 ```
 
+仓库根 `.gitignore`（防止把编译产物和数据库文件提交进 git）：
+
+```
+__pycache__/
+*.pyc
+*.db
+desktop.ini
+```
+
 `campus_market/static/style.css`:
 
 ```css
@@ -625,7 +640,7 @@ Expected: `Ran 16 tests ... OK`（DatabaseTests 10 + HelperTests 4 + SmokeTests 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add campus_market/app.py campus_market/templates/ campus_market/static/ campus_market/tests/
+git add .gitignore campus_market/app.py campus_market/templates/ campus_market/static/ campus_market/tests/
 git commit -m "feat: 应用工厂、工具函数与页面骨架"
 ```
 
@@ -854,7 +869,7 @@ Expected: FAIL（`seed_demo_data` 未定义 / 数量为 0）
 
 - [ ] **Step 3: 实现 seed_demo_data**
 
-`campus_market/database.py` 顶部补 `from werkzeug.security import generate_password_hash`，文件末尾追加：
+`campus_market/database.py` 顶部补 `from werkzeug.security import generate_password_hash`，并把 Task 1 留下的 `seed_demo_data` 桩函数（`raise NotImplementedError`）**整体替换**为真实实现（不是追加，避免同名双定义）：
 
 ```python
 def seed_demo_data(conn):
