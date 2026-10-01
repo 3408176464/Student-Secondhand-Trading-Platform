@@ -1436,9 +1436,13 @@ class PublishTests(AppTestCase):
     def test_publish_success(self):
         self.register("seller1", "password123", "")
         self.login("seller1", "password123")
-        resp = self.create_item()
-        body = resp.get_data(as_text=True)
-        self.assertIn("我的商品", body)   # 发布成功落在我的商品页
+        resp = self.client.post("/publish", data={
+            "title": "高等数学教材", "price": "25.00", "category_id": 1,
+            "condition": "九成新", "description": "有少量笔记",
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.headers["Location"], "/my-items")  # 发布成功落在我的商品页
+        body = self.client.get("/my-items").get_data(as_text=True)
         self.assertIn("高等数学教材", body)
         self.assertIn("25.00", body)
         row = self.sql("SELECT * FROM items").fetchone()
@@ -1859,6 +1863,19 @@ class PlaceOrderTests(AppTestCase):
         self.assertIn("/login", resp.headers["Location"])
         self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
                          .fetchone()["n"], 0)
+
+    def test_full_lifecycle_rebuy_after_cancel(self):
+        # 规格第 7 节：下单→取消→再下单→确认完成；唯一索引不误拦历史订单
+        self._seller_and_buyer()
+        self.client.post("/items/1/buy")
+        self.client.post("/orders/1/cancel")
+        self.client.post("/items/1/buy")
+        self.client.post("/orders/2/confirm")
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已售")
+        statuses = [r["status"] for r in self.sql(
+            "SELECT status FROM orders WHERE item_id = 1 ORDER BY id")]
+        self.assertEqual(statuses, ["已取消", "已完成"])
 ```
 
 （部分唯一索引的第二层防线「直接插两条待交易订单」已在 Task 1 的 `test_partial_unique_index` 覆盖。）
@@ -1990,7 +2007,7 @@ class MyOrdersTests(AppTestCase):
         self._setup_order()
         self.client.post("/orders/1/cancel")
         body = self.client.get("/my-orders").get_data(as_text=True)
-        self.assertIn("已取消", body)
+        self.assertIn('<span class="badge">已取消</span>', body)  # 断言表格状态单元格，排除 flash 误命中
 
     def test_buyer_cancel_restores_item(self):
         self._setup_order()
@@ -2421,6 +2438,7 @@ class SettingsTests(AppTestCase):
     def test_settings_update_contact(self):
         self.register("alice", "password123", "old_wx")
         self.login("alice", "password123")
+        self.assertIn("old_wx", self.client.get("/settings").get_data(as_text=True))
         resp = self.client.post("/settings", data={"contact": "new_wx"},
                                 follow_redirects=True)
         self.assertIn("联系方式已保存", resp.get_data(as_text=True))
@@ -2457,6 +2475,8 @@ class SettingsTests(AppTestCase):
         self.register("buyer1", "password123", "")
         self.login("buyer1", "password123")
         self.client.post("/items/1/buy")
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 1)  # 下单成功，后续 405 检查才有意义
         for path in ("/items/1/delist", "/items/1/price", "/items/1/buy",
                      "/orders/1/cancel", "/orders/1/confirm"):
             self.assertEqual(self.client.get(path).status_code, 405)
@@ -2464,7 +2484,6 @@ class SettingsTests(AppTestCase):
     def test_created_at_displayed_local(self):
         self.register("seller1", "password123", "")
         self.login("seller1", "password123")
-        self.sql("UPDATE users SET created_at = '2026-10-01 04:00:00' WHERE username = 'seller1'")
         self.create_item()
         self.sql("UPDATE items SET created_at = '2026-10-01 04:00:00'")
         body = self.client.get("/my-items").get_data(as_text=True)
@@ -2541,7 +2560,7 @@ Python + Flask + SQLite 的校园二手交易网站（数据库原理课程作�
     python app.py
 
 浏览器打开 http://127.0.0.1:5000 。首次启动自动创建 campus_market.db
-并写入示例数据（10 个用户，密码统一为 password123）。
+并写入示例数据（示例账号 zhangsan / lisi / wangwu / zhaoliu 等 10 个，密码统一为 password123）。
 
 ## 测试
 
@@ -2551,7 +2570,7 @@ Python + Flask + SQLite 的校园二手交易网站（数据库原理课程作�
 - [ ] **Step 4: 全量测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 79 tests ... OK`（全部用例通过，0 失败）
+Expected: `Ran 80 tests ... OK`（全部用例通过，0 失败）
 
 - [ ] **Step 5: 手工冒烟验证**
 
