@@ -1289,6 +1289,9 @@ class DetailTests(AppTestCase):
         self.register("buyer1", "password123", "")
         self.login("buyer1", "password123")
         self.assertEqual(self.client.get("/items/4").status_code, 404)
+        # 与不存在 id 的响应完全一致：不泄露"曾经存在但已下架"
+        self.assertEqual(self.client.get("/items/4").get_data(),
+                         self.client.get("/items/999").get_data())
 
     def test_delisted_visible_to_owner(self):
         sid = self._seller_with_items()
