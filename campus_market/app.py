@@ -63,6 +63,11 @@ def with_display(row):
     return d
 
 
+def _zh(e, fallback):
+    """Werkzeug 默认描述换中文兜底；自定义 description 原样保留。"""
+    return fallback if e.description in (None, type(e).description) else e.description
+
+
 # ---------- 应用工厂 ----------
 
 def create_app(test_config=None):
@@ -119,15 +124,15 @@ def create_app(test_config=None):
 
     @app.errorhandler(403)
     def forbidden(e):
-        return render_template("error.html", message=e.description or "无权访问"), 403
+        return render_template("error.html", message=_zh(e, "无权访问")), 403
 
     @app.errorhandler(404)
     def not_found(e):
-        return render_template("error.html", message=e.description or "资源不存在"), 404
+        return render_template("error.html", message=_zh(e, "资源不存在")), 404
 
     @app.errorhandler(500)
     def internal_error(e):
-        return render_template("error.html", message=e.description or "数据异常，请稍后重试"), 500
+        return render_template("error.html", message=_zh(e, "数据异常，请稍后重试")), 500
 
     @app.route("/")
     def index():

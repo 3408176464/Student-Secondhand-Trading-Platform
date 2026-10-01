@@ -190,6 +190,7 @@ class SmokeTests(AppTestCase):
     def test_error_page_404(self):
         resp = self.client.get("/no-such-page")
         self.assertEqual(resp.status_code, 404)
+        self.assertIn("资源不存在", resp.get_data(as_text=True))
 
 
 if __name__ == "__main__":
