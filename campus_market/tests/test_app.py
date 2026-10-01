@@ -498,9 +498,12 @@ class PublishTests(AppTestCase):
     def test_publish_success(self):
         self.register("seller1", "password123", "")
         self.login("seller1", "password123")
-        resp = self.create_item()
-        body = resp.get_data(as_text=True)
-        self.assertIn("我的商品", body)   # 发布成功落在我的商品页
+        resp = self.client.post("/publish", data={
+            "title": "高等数学教材", "price": "25.00", "category_id": 1,
+            "condition": "九成新", "description": "有少量笔记",
+        })
+        self.assertEqual(resp.headers["Location"], "/my-items")  # 发布成功落在我的商品页
+        body = self.client.get("/my-items").get_data(as_text=True)
         self.assertIn("高等数学教材", body)
         self.assertIn("25.00", body)
         row = self.sql("SELECT * FROM items").fetchone()
@@ -821,6 +824,60 @@ class SalesTests(AppTestCase):
         self.assertNotIn("卖家2的商品", body)
         self.assertNotIn("buyer2", body)
         self.assertNotIn("wx_buyer2", body)
+
+
+class SettingsTests(AppTestCase):
+    def test_settings_update_contact(self):
+        self.register("alice", "password123", "old_wx")
+        self.login("alice", "password123")
+        resp = self.client.post("/settings", data={"contact": "new_wx"},
+                                follow_redirects=True)
+        self.assertIn("联系方式已保存", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT contact FROM users WHERE username = 'alice'")
+                         .fetchone()["contact"], "new_wx")
+
+    def test_settings_empty_contact_stores_null(self):
+        self.register("alice", "password123", "old_wx")
+        self.login("alice", "password123")
+        self.client.post("/settings", data={"contact": "  "})
+        self.assertIsNone(self.sql(
+            "SELECT contact FROM users WHERE username = 'alice'")
+            .fetchone()["contact"])
+
+    def test_settings_requires_login(self):
+        resp = self.client.get("/settings")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
+
+    def test_logout_then_protected_redirects(self):
+        self.register("alice", "password123", "")
+        self.login("alice", "password123")
+        self.logout()
+        for path in ("/publish", "/my-items", "/my-orders", "/sales", "/settings"):
+            resp = self.client.get(path)
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/login", resp.headers["Location"])
+
+    def test_get_on_post_only_routes_405(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item()
+        self.logout()
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        self.client.post("/items/1/buy")
+        for path in ("/items/1/delist", "/items/1/price", "/items/1/buy",
+                     "/orders/1/cancel", "/orders/1/confirm"):
+            self.assertEqual(self.client.get(path).status_code, 405)
+
+    def test_created_at_displayed_local(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.sql("UPDATE users SET created_at = '2026-10-01 04:00:00' WHERE username = 'seller1'")
+        self.create_item()
+        self.sql("UPDATE items SET created_at = '2026-10-01 04:00:00'")
+        body = self.client.get("/my-items").get_data(as_text=True)
+        self.assertIn("2026-10-01 12:00:00", body)
 
 
 if __name__ == "__main__":

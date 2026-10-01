@@ -410,7 +410,7 @@ def create_app(test_config=None):
     @login_required
     def sales():
         rows = get_db().execute(
-            "SELECT o.*, i.title AS item_title, i.status AS item_status, "
+            "SELECT o.*, i.title AS item_title, "
             "u.username AS buyer_name, u.contact AS buyer_contact "
             "FROM orders o JOIN items i ON o.item_id = i.id "
             "JOIN users u ON o.buyer_id = u.id "
@@ -489,6 +489,17 @@ def create_app(test_config=None):
             abort(500, description="数据异常，请稍后重试")
         flash("交易已完成")
         return _order_redirect(order)
+
+    @app.route("/settings", methods=("GET", "POST"))
+    @login_required
+    def settings():
+        if request.method == "POST":
+            contact = request.form.get("contact", "").strip()
+            get_db().execute("UPDATE users SET contact = ? WHERE id = ?",
+                             (contact or None, g.user["id"]))
+            flash("联系方式已保存")
+            return redirect(url_for("settings"))
+        return render_template("settings.html")
 
     return app
 
