@@ -406,6 +406,19 @@ def create_app(test_config=None):
         return render_template("my_orders.html",
                                orders=[with_display(r) for r in rows])
 
+    @app.route("/sales")
+    @login_required
+    def sales():
+        rows = get_db().execute(
+            "SELECT o.*, i.title AS item_title, i.status AS item_status, "
+            "u.username AS buyer_name, u.contact AS buyer_contact "
+            "FROM orders o JOIN items i ON o.item_id = i.id "
+            "JOIN users u ON o.buyer_id = u.id "
+            "WHERE i.seller_id = ? ORDER BY o.created_at DESC, o.id DESC",
+            (g.user["id"],)).fetchall()
+        return render_template("sales.html",
+                               orders=[with_display(r) for r in rows])
+
     def _get_writable_order_or_403(order_id):
         order = get_db().execute(
             "SELECT o.*, i.seller_id FROM orders o "
@@ -418,10 +431,10 @@ def create_app(test_config=None):
         return order
 
     def _order_redirect(order):
-        """订单操作后按关系跳转：买家回我的订单，卖家回我的商品。"""
+        """订单操作后按关系跳转：买家回我的订单，卖家回卖出记录。"""
         if g.user["id"] == order["buyer_id"]:
             return redirect(url_for("my_orders"))
-        return redirect(url_for("my_items"))  # Task 11 把此处换成 url_for("sales")
+        return redirect(url_for("sales"))
 
     @app.route("/orders/<int:order_id>/cancel", methods=("POST",))
     @login_required

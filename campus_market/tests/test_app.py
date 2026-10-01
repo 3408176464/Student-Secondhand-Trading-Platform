@@ -753,5 +753,54 @@ class MyOrdersTests(AppTestCase):
         self.assertNotIn('href="/items/1"', body)   # 但不渲染详情链接（下架对买家隐藏）
 
 
+class SalesTests(AppTestCase):
+    def _setup_order(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item()
+        self.logout()
+        self.register("buyer1", "password123", "wx_buyer")
+        self.login("buyer1", "password123")
+        self.client.post("/items/1/buy")
+        self.logout()
+        self.login("seller1", "password123")
+
+    def test_sales_shows_buyer_contact(self):
+        self._setup_order()
+        body = self.client.get("/sales").get_data(as_text=True)
+        self.assertIn("buyer1", body)
+        self.assertIn("wx_buyer", body)
+
+    def test_sales_includes_cancelled(self):
+        self._setup_order()
+        self.client.post("/orders/1/cancel")
+        body = self.client.get("/sales").get_data(as_text=True)
+        self.assertIn("已取消", body)
+
+    def test_seller_confirm_from_sales(self):
+        self._setup_order()
+        resp = self.client.post("/orders/1/confirm")
+        self.assertEqual(resp.headers["Location"], "/sales")  # 锁定 _order_redirect 卖家分支已切到 sales
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "已完成")
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已售")
+
+    def test_sales_sorted_newest_first(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item(title="商品甲")
+        self.create_item(title="商品乙")
+        self.logout()
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        self.client.post("/items/1/buy")
+        self.client.post("/items/2/buy")
+        self.logout()
+        self.login("seller1", "password123")
+        body = self.client.get("/sales").get_data(as_text=True)
+        self.assertLess(body.index("商品乙"), body.index("商品甲"))
+
+
 if __name__ == "__main__":
     unittest.main()
