@@ -397,5 +397,65 @@ class MarketTests(AppTestCase):
         self.assertLess(body.index("同一秒后发"), body.index("较早商品"))
 
 
+class DetailTests(AppTestCase):
+    def _seller_with_items(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "在售商品", 2500, status="在售")
+        self.insert_item(sid, "已预订商品", 2500, status="已预订")
+        self.insert_item(sid, "已售商品", 2500, status="已售")
+        self.insert_item(sid, "下架商品", 2500, status="下架")
+        return sid
+
+    def test_anon_can_view_on_sale(self):
+        self._seller_with_items()
+        resp = self.client.get("/items/1")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        self.assertIn("在售商品", body)
+        self.assertIn("25.00", body)
+
+    def test_anon_redirected_for_reserved_sold(self):
+        self._seller_with_items()
+        for path in ("/items/2", "/items/3"):
+            resp = self.client.get(path)
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/login", resp.headers["Location"])
+
+    def test_delisted_404_for_anon_and_others(self):
+        self._seller_with_items()
+        self.assertEqual(self.client.get("/items/4").status_code, 404)
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        self.assertEqual(self.client.get("/items/4").status_code, 404)
+
+    def test_delisted_visible_to_owner(self):
+        sid = self._seller_with_items()
+        self.client.post("/login", data={"username": "seller1", "password": "password123"})
+        self.assertEqual(self.client.get("/items/4").status_code, 200)
+
+    def test_buy_button_visibility(self):
+        self._seller_with_items()
+        # 匿名：无购买按钮
+        self.assertNotIn("购买", self.client.get("/items/1").get_data(as_text=True))
+        # 买家登录：有购买按钮
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        self.assertIn("购买", self.client.get("/items/1").get_data(as_text=True))
+        # 卖家看自己的商品：无购买按钮
+        self.logout()
+        self.login("seller1", "password123")
+        self.assertNotIn("购买", self.client.get("/items/1").get_data(as_text=True))
+
+    def test_contact_visibility(self):
+        self._seller_with_items()
+        # 匿名：不含联系方式
+        self.assertNotIn("联系方式", self.client.get("/items/1").get_data(as_text=True))
+        # 登录：显示联系方式（seller1 注册时 contact 为空）
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        body = self.client.get("/items/1").get_data(as_text=True)
+        self.assertIn("卖家未填写联系方式", body)
+
+
 if __name__ == "__main__":
     unittest.main()

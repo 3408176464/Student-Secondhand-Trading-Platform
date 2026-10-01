@@ -236,6 +236,27 @@ def create_app(test_config=None):
         categories = db.execute("SELECT * FROM categories ORDER BY id").fetchall()
         return render_template("index.html", items=items, categories=categories)
 
+    @app.route("/items/<int:item_id>")
+    def item_detail(item_id):
+        db = get_db()
+        item = db.execute(
+            "SELECT i.*, u.username AS seller_name, u.contact AS seller_contact, "
+            "c.name AS category_name FROM items i "
+            "JOIN users u ON i.seller_id = u.id "
+            "JOIN categories c ON i.category_id = c.id WHERE i.id = ?",
+            (item_id,)).fetchone()
+        if item is None:
+            abort(404)
+        if item["status"] == "下架":
+            if g.user is None or g.user["id"] != item["seller_id"]:
+                abort(404, description="商品已下架")
+        elif item["status"] in ("已预订", "已售") and g.user is None:
+            return redirect(url_for("login"))
+        can_buy = (g.user is not None and item["status"] == "在售"
+                   and g.user["id"] != item["seller_id"])
+        return render_template("item_detail.html", item=with_display(item),
+                               can_buy=can_buy)
+
     return app
 
 

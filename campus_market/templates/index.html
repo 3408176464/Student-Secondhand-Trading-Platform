@@ -18,7 +18,7 @@
 <ul class="item-list">
   {% for item in items %}
   <li class="item-card">
-    <h3>{{ item.title }}</h3>
+    <h3><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.title }}</a></h3>
     <div class="price">¥{{ item.price_display }}</div>
     <div class="meta">{{ item.condition }} · {{ item.category_name }} · 卖家 {{ item.seller_name }}</div>
   </li>

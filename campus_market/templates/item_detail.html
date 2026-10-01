@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }}{% endblock %}
+{% block content %}
+<h1>{{ item.title }}</h1>
+<p><span class="price">¥{{ item.price_display }}</span>
+  <span class="badge {{ {'在售': 'on-sale', '已预订': 'reserved', '已售': 'sold', '下架': 'off'}[item.status] }}">{{ item.status }}</span>
+</p>
+<p>成色：{{ item.condition }}　分类：{{ item.category_name }}</p>
+<p>{{ item.description }}</p>
+<p>卖家：{{ item.seller_name }}</p>
+{% if g.user %}
+  <p>联系方式：{{ item.seller_contact or '卖家未填写联系方式' }}</p>
+{% endif %}
+{% if can_buy %}
+<button type="button">购买</button>
+{% endif %}
+{% endblock %}
