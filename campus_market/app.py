@@ -61,6 +61,13 @@ def parse_price_filter(value):
     return cents
 
 
+def _rollback(db):
+    try:
+        db.execute("ROLLBACK")
+    except sqlite3.Error:
+        pass
+
+
 def with_display(row):
     """数据库行 → 展示用 dict（价格元、时间本地化）。"""
     d = dict(row)
@@ -344,6 +351,44 @@ def create_app(test_config=None):
         if cur.rowcount == 0:
             flash("商品状态已变更，下架失败")
         return redirect(url_for("my_items"))
+
+    @app.route("/items/<int:item_id>/buy", methods=("POST",))
+    @login_required
+    def place_order(item_id):
+        db = get_db()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            item = db.execute(
+                "SELECT price, seller_id, status FROM items WHERE id = ?",
+                (item_id,)).fetchone()
+            if item is None:
+                _rollback(db)
+                return redirect(url_for("index"))
+            if item["status"] != "在售":
+                _rollback(db)
+                flash("商品已被买走或已下架")
+                return redirect(url_for("index"))
+            if item["seller_id"] == g.user["id"]:
+                _rollback(db)
+                flash("不能购买自己的商品")
+                return redirect(url_for("item_detail", item_id=item_id))
+            cur = db.execute(
+                "UPDATE items SET status = '已预订' WHERE id = ? AND status = '在售'",
+                (item_id,))
+            if cur.rowcount == 0:
+                _rollback(db)
+                flash("商品已被买走或已下架")
+                return redirect(url_for("index"))
+            db.execute(
+                "INSERT INTO orders (item_id, buyer_id, price, status) "
+                "VALUES (?, ?, ?, '待交易')",
+                (item_id, g.user["id"], item["price"]))
+            db.execute("COMMIT")
+            return redirect(url_for("index"))
+        except sqlite3.IntegrityError:
+            _rollback(db)
+            flash("商品已被买走或已下架")
+            return redirect(url_for("index"))
 
     return app
 

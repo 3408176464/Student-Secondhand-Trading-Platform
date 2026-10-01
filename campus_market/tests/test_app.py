@@ -596,5 +596,67 @@ class MyItemsTests(AppTestCase):
                              .fetchone()["status"], status)
 
 
+class PlaceOrderTests(AppTestCase):
+    def _seller_and_buyer(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item()          # item 1，价格 25.00 = 2500 分
+        self.logout()
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+
+    def test_buy_success_price_from_db(self):
+        self._seller_and_buyer()
+        # 伪造客户端价格，验证成交价仍取自数据库
+        resp = self.client.post("/items/1/buy", data={"price": "0.01"},
+                                follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        item = self.sql("SELECT status FROM items WHERE id = 1").fetchone()
+        self.assertEqual(item["status"], "已预订")
+        order = self.sql("SELECT * FROM orders").fetchone()
+        self.assertEqual(order["price"], 2500)
+        self.assertEqual(order["status"], "待交易")
+
+    def test_buy_own_item_rejected(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item()
+        resp = self.client.post("/items/1/buy", follow_redirects=True)
+        self.assertIn("不能购买自己的商品", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 0)
+
+    def test_buy_non_on_sale_rejected(self):
+        self._seller_and_buyer()
+        for status in ("已预订", "已售", "下架"):
+            self.sql("UPDATE items SET status = ? WHERE id = 1", (status,))
+            resp = self.client.post("/items/1/buy", follow_redirects=True)
+            self.assertIn("商品已被买走或已下架", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 0)
+
+    def test_double_buy_second_fails(self):
+        self._seller_and_buyer()
+        self.client.post("/items/1/buy")
+        self.logout()
+        self.register("buyer2", "password123", "")
+        self.login("buyer2", "password123")
+        resp = self.client.post("/items/1/buy", follow_redirects=True)
+        self.assertIn("商品已被买走或已下架", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 1)
+
+    def test_buy_requires_login(self):
+        self.register("seller1", "password123", "")
+        self.login("seller1", "password123")
+        self.create_item()
+        self.logout()
+        resp = self.client.post("/items/1/buy")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
