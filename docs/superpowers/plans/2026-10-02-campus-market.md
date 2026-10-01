@@ -1876,6 +1876,24 @@ class PlaceOrderTests(AppTestCase):
         statuses = [r["status"] for r in self.sql(
             "SELECT status FROM orders WHERE item_id = 1 ORDER BY id")]
         self.assertEqual(statuses, ["已取消", "已完成"])
+
+    def test_same_account_buys_and_sells(self):
+        # 规格第 7 节：同一账号既买又卖（全员可买可卖模型）
+        self.register("alice", "password123", "")
+        self.login("alice", "password123")
+        self.create_item(title="甲的商品")          # item 1，alice 是卖家
+        self.logout()
+        self.register("bob", "password123", "")
+        self.login("bob", "password123")
+        self.create_item(title="乙的商品")          # item 2，bob 是卖家
+        self.client.post("/items/1/buy")            # bob 买 alice 的
+        self.logout()
+        self.login("alice", "password123")
+        self.client.post("/items/2/buy")            # alice 买 bob 的
+        self.assertIn("乙的商品", self.client.get("/my-orders").get_data(as_text=True))
+        self.assertIn("甲的商品", self.client.get("/sales").get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 2)
 ```
 
 （部分唯一索引的第二层防线「直接插两条待交易订单」已在 Task 1 的 `test_partial_unique_index` 覆盖。）
@@ -2057,6 +2075,16 @@ class MyOrdersTests(AppTestCase):
         self.assertEqual(resp.status_code, 500)
         self.assertIn("数据异常", resp.get_data(as_text=True))
         # 事务回滚，订单状态不变
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "待交易")
+
+    def test_cancel_data_inconsistency_500(self):
+        self._setup_order()
+        # 同样的不一致场景走取消路径（规格第 7 节"完成/取消时"）
+        self.sql("UPDATE items SET status = '已售' WHERE id = 1")
+        resp = self.client.post("/orders/1/cancel")
+        self.assertEqual(resp.status_code, 500)
+        self.assertIn("数据异常", resp.get_data(as_text=True))
         self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
                          .fetchone()["status"], "待交易")
 
@@ -2570,7 +2598,7 @@ Python + Flask + SQLite 的校园二手交易网站（数据库原理课程作�
 - [ ] **Step 4: 全量测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 80 tests ... OK`（全部用例通过，0 失败）
+Expected: `Ran 82 tests ... OK`（全部用例通过，0 失败）
 
 - [ ] **Step 5: 手工冒烟验证**
 
