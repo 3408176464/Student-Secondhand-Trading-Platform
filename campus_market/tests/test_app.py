@@ -180,6 +180,10 @@ class AppTestCase(unittest.TestCase):
             "category_id, seller_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (title, price, condition, "desc", status, category_id, seller_id, created_at))
 
+    def register_user(self, username):
+        self.register(username, "password123", "")
+        return self.user_id(username)
+
 
 class SmokeTests(AppTestCase):
     def test_index_ok(self):
@@ -288,6 +292,89 @@ class SeedTests(unittest.TestCase):
             "SELECT DISTINCT seller_id FROM items")}
         self.assertEqual(buyers, set(range(1, 11)))
         self.assertEqual(sellers, set(range(1, 11)))
+
+
+class MarketTests(AppTestCase):
+    def test_market_shows_only_on_sale(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "在售商品", 1000, status="在售")
+        self.insert_item(sid, "已预订商品", 1000, status="已预订")
+        self.insert_item(sid, "已售商品", 1000, status="已售")
+        self.insert_item(sid, "下架商品", 1000, status="下架")
+        body = self.client.get("/").get_data(as_text=True)
+        self.assertIn("在售商品", body)
+        self.assertNotIn("已预订商品", body)
+        self.assertNotIn("已售商品", body)
+        self.assertNotIn("下架商品", body)
+
+    def test_search_by_title(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "高等数学教材", 1500)
+        self.insert_item(sid, "线性代数", 1200)
+        body = self.client.get("/?q=数学").get_data(as_text=True)
+        self.assertIn("高等数学教材", body)
+        self.assertNotIn("线性代数", body)
+
+    def test_search_escapes_percent(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "期末100%冲刺卷", 1000)
+        self.insert_item(sid, "期末冲刺卷", 1000)
+        body = self.client.get("/?q=100%").get_data(as_text=True)
+        self.assertIn("期末100%冲刺卷", body)
+        self.assertNotIn("期末冲刺卷", body)
+
+    def test_price_range_filter(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "便宜货", 500)
+        self.insert_item(sid, "中等货", 1500)
+        self.insert_item(sid, "贵东西", 5000)
+        body = self.client.get("/?min_price=10&max_price=20").get_data(as_text=True)
+        self.assertNotIn("便宜货", body)
+        self.assertIn("中等货", body)
+        self.assertNotIn("贵东西", body)
+
+    def test_price_one_sided(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "便宜货", 500)
+        self.insert_item(sid, "贵东西", 5000)
+        body = self.client.get("/?min_price=30").get_data(as_text=True)
+        self.assertNotIn("便宜货", body)
+        self.assertIn("贵东西", body)
+        body = self.client.get("/?max_price=30").get_data(as_text=True)
+        self.assertIn("便宜货", body)
+        self.assertNotIn("贵东西", body)
+
+    def test_price_min_gt_max_error(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "某商品", 1000)
+        body = self.client.get("/?min_price=50&max_price=10").get_data(as_text=True)
+        self.assertIn("最低价不能大于最高价", body)
+
+    def test_price_invalid_error(self):
+        body = self.client.get("/?min_price=abc").get_data(as_text=True)
+        self.assertIn("价格区间必须为合法数字", body)
+
+    def test_category_filter(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "教材甲", 1000, category_id=1)
+        self.insert_item(sid, "数码乙", 1000, category_id=2)
+        body = self.client.get("/?category_id=1").get_data(as_text=True)
+        self.assertIn("教材甲", body)
+        self.assertNotIn("数码乙", body)
+
+    def test_invalid_category_ignored(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "商品甲", 1000, category_id=1)
+        resp = self.client.get("/?category_id=999")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("商品甲", resp.get_data(as_text=True))
+
+    def test_sort_newest_first(self):
+        sid = self.register_user("seller1")
+        self.insert_item(sid, "较早商品", 1000, created_at="2026-10-01 12:00:00")
+        self.insert_item(sid, "同一秒后发", 1000, created_at="2026-10-01 12:00:00")
+        body = self.client.get("/").get_data(as_text=True)
+        self.assertLess(body.index("同一秒后发"), body.index("较早商品"))
 
 
 if __name__ == "__main__":

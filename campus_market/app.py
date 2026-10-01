@@ -179,7 +179,53 @@ def create_app(test_config=None):
 
     @app.route("/")
     def index():
-        return render_template("index.html", items=[], categories=[])
+        db = get_db()
+        q = request.args.get("q", "").strip()
+        min_price = request.args.get("min_price", "").strip()
+        max_price = request.args.get("max_price", "").strip()
+        category_id = request.args.get("category_id", "").strip()
+
+        sql = ("SELECT i.*, u.username AS seller_name, c.name AS category_name "
+               "FROM items i JOIN users u ON i.seller_id = u.id "
+               "JOIN categories c ON i.category_id = c.id "
+               "WHERE i.status = '在售'")
+        params = []
+        if q:
+            sql += " AND i.title LIKE ? ESCAPE '\\'"
+            params.append(f"%{escape_like(q)}%")
+
+        error = None
+        min_cents = max_cents = None
+        try:
+            if min_price:
+                min_cents = parse_price_filter(min_price)
+            if max_price:
+                max_cents = parse_price_filter(max_price)
+            if (min_cents is not None and max_cents is not None
+                    and min_cents > max_cents):
+                error = "最低价不能大于最高价"
+        except ValueError:
+            error = "价格区间必须为合法数字"
+
+        if error:
+            flash(error)
+        else:
+            if min_cents is not None:
+                sql += " AND i.price >= ?"
+                params.append(min_cents)
+            if max_cents is not None:
+                sql += " AND i.price <= ?"
+                params.append(max_cents)
+            if category_id.isdigit():
+                exists = db.execute("SELECT id FROM categories WHERE id = ?",
+                                    (int(category_id),)).fetchone()
+                if exists is not None:
+                    sql += " AND i.category_id = ?"
+                    params.append(exists["id"])
+        sql += " ORDER BY i.created_at DESC, i.id DESC"
+        items = [with_display(r) for r in db.execute(sql, params).fetchall()]
+        categories = db.execute("SELECT * FROM categories ORDER BY id").fetchall()
+        return render_template("index.html", items=items, categories=categories)
 
     return app
 
