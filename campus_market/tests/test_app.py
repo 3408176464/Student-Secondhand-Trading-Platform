@@ -500,7 +500,8 @@ class PublishTests(AppTestCase):
         self.login("seller1", "password123")
         resp = self.create_item()
         body = resp.get_data(as_text=True)
-        self.assertIn("高等数学教材", body)   # 落地页展示商品（Task 8 前是市场页，Task 8 后是我的商品页）
+        self.assertIn("我的商品", body)   # 发布成功落在我的商品页
+        self.assertIn("高等数学教材", body)
         self.assertIn("25.00", body)
         row = self.sql("SELECT * FROM items").fetchone()
         self.assertEqual(row["price"], 2500)
@@ -578,15 +579,21 @@ class MyItemsTests(AppTestCase):
         self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
                          .fetchone()["status"], "下架")
         self.assertNotIn("高等数学教材", self.client.get("/").get_data(as_text=True))
+        # 下架是终态：二次下架被拒绝，状态不变
+        resp = self.client.post("/items/1/delist", follow_redirects=True)
+        self.assertIn("只有在售商品可以下架", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "下架")
 
     def test_delist_wrong_status_rejected(self):
         self._login_seller()
         self.create_item()
-        self.sql("UPDATE items SET status = '已售' WHERE id = 1")
-        resp = self.client.post("/items/1/delist", follow_redirects=True)
-        self.assertIn("只有在售商品可以下架", resp.get_data(as_text=True))
-        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
-                         .fetchone()["status"], "已售")
+        for status in ("已售", "已预订"):
+            self.sql("UPDATE items SET status = ? WHERE id = 1", (status,))
+            resp = self.client.post("/items/1/delist", follow_redirects=True)
+            self.assertIn("只有在售商品可以下架", resp.get_data(as_text=True))
+            self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                             .fetchone()["status"], status)
 
 
 if __name__ == "__main__":

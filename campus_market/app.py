@@ -338,9 +338,11 @@ def create_app(test_config=None):
         if item["status"] != "在售":
             flash("只有在售商品可以下架")
             return redirect(url_for("my_items"))
-        get_db().execute(
+        cur = get_db().execute(
             "UPDATE items SET status = '下架' WHERE id = ? AND status = '在售'",
             (item_id,))
+        if cur.rowcount == 0:
+            flash("商品状态已变更，下架失败")
         return redirect(url_for("my_items"))
 
     return app
