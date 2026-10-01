@@ -2260,6 +2260,7 @@ class SalesTests(AppTestCase):
         body = self.client.get("/sales").get_data(as_text=True)
         self.assertIn('<span class="badge">已取消</span>', body)  # 断言表格状态单元格，排除 flash 文案误命中
         self.assertNotIn("拒绝订单", body)  # 终态只读，无操作按钮
+        self.assertNotIn("确认完成", body)
 
     def test_seller_confirm_from_sales(self):
         self._setup_order()
@@ -2284,6 +2285,25 @@ class SalesTests(AppTestCase):
         self.login("seller1", "password123")
         body = self.client.get("/sales").get_data(as_text=True)
         self.assertLess(body.index("商品乙"), body.index("商品甲"))
+
+    def test_sales_scoped_to_seller(self):
+        # 卖出记录只看自己的订单，不得泄露其他卖家的订单与买家联系方式
+        self._setup_order()          # seller1 的单（item 1）
+        self.logout()
+        self.register("seller2", "password123", "")
+        self.login("seller2", "password123")
+        self.create_item(title="卖家2的商品")   # item 2
+        self.logout()
+        self.register("buyer2", "password123", "wx_buyer2")
+        self.login("buyer2", "password123")
+        self.client.post("/items/2/buy")
+        self.logout()
+        self.login("seller1", "password123")
+        body = self.client.get("/sales").get_data(as_text=True)
+        self.assertIn("高等数学教材", body)
+        self.assertNotIn("卖家2的商品", body)
+        self.assertNotIn("buyer2", body)
+        self.assertNotIn("wx_buyer2", body)
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -2370,7 +2390,7 @@ Expected: FAIL（`/sales` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 72 tests ... OK`
+Expected: `Ran 73 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -2531,7 +2551,7 @@ Python + Flask + SQLite 的校园二手交易网站（数据库原理课程作�
 - [ ] **Step 4: 全量测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 78 tests ... OK`（全部用例通过，0 失败）
+Expected: `Ran 79 tests ... OK`（全部用例通过，0 失败）
 
 - [ ] **Step 5: 手工冒烟验证**
 
