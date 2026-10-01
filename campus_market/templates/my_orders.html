@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}我的订单{% endblock %}
+{% block content %}
+<h1>我的订单</h1>
+<table>
+  <tr><th>商品</th><th>成交价</th><th>状态</th><th>卖家</th><th>联系方式</th><th>下单时间</th><th>操作</th></tr>
+  {% for o in orders %}
+  <tr>
+    <td>
+      {% if o.item_status != '下架' %}
+        <a href="{{ url_for('item_detail', item_id=o.item_id) }}">{{ o.item_title }}</a>
+      {% else %}{{ o.item_title }}{% endif %}
+    </td>
+    <td>¥{{ o.price_display }}</td>
+    <td><span class="badge">{{ o.status }}</span></td>
+    <td>{{ o.seller_name }}</td>
+    <td>{{ o.seller_contact or '对方未填写联系方式' }}</td>
+    <td>{{ o.created_at_local }}</td>
+    <td>
+      {% if o.status == '待交易' %}
+      <form action="{{ url_for('cancel_order', order_id=o.id) }}" method="post" class="inline">
+        <button type="submit" class="danger">取消</button>
+      </form>
+      <form action="{{ url_for('confirm_order', order_id=o.id) }}" method="post" class="inline">
+        <button type="submit">确认完成</button>
+      </form>
+      {% else %}—{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">还没有订单</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

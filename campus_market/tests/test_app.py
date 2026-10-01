@@ -661,5 +661,85 @@ class PlaceOrderTests(AppTestCase):
                          .fetchone()["n"], 0)
 
 
+class MyOrdersTests(AppTestCase):
+    def _setup_order(self, buyer_contact="wx_buyer", seller_contact="wx_seller"):
+        self.register("seller1", "password123", seller_contact)
+        self.login("seller1", "password123")
+        self.create_item()
+        self.logout()
+        self.register("buyer1", "password123", buyer_contact)
+        self.login("buyer1", "password123")
+        self.client.post("/items/1/buy")
+
+    def test_my_orders_shows_seller_contact(self):
+        self._setup_order()
+        body = self.client.get("/my-orders").get_data(as_text=True)
+        self.assertIn("wx_seller", body)
+        self.assertIn("seller1", body)
+        self.assertIn("待交易", body)
+
+    def test_empty_contact_message(self):
+        self._setup_order(seller_contact="")
+        body = self.client.get("/my-orders").get_data(as_text=True)
+        self.assertIn("对方未填写联系方式", body)
+
+    def test_cancelled_order_visible(self):
+        self._setup_order()
+        self.client.post("/orders/1/cancel")
+        body = self.client.get("/my-orders").get_data(as_text=True)
+        self.assertIn("已取消", body)
+
+    def test_buyer_cancel_restores_item(self):
+        self._setup_order()
+        self.client.post("/orders/1/cancel")
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "在售")
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "已取消")
+
+    def test_seller_cancel_restores_item(self):
+        self._setup_order()
+        self.logout()
+        self.login("seller1", "password123")
+        self.client.post("/orders/1/cancel")
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "在售")
+
+    def test_third_party_cancel_403(self):
+        self._setup_order()
+        self.logout()
+        self.register("stranger", "password123", "")
+        self.login("stranger", "password123")
+        resp = self.client.post("/orders/1/cancel")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_confirm_by_buyer(self):
+        self._setup_order()
+        self.client.post("/orders/1/confirm")
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "已完成")
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已售")
+
+    def test_illegal_transition_rejected(self):
+        self._setup_order()
+        self.client.post("/orders/1/cancel")
+        resp = self.client.post("/orders/1/confirm", follow_redirects=True)
+        self.assertIn("订单状态已变更", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "已取消")
+
+    def test_data_inconsistency_500(self):
+        self._setup_order()
+        # 外部改坏数据：订单待交易但商品被改成在售
+        self.sql("UPDATE items SET status = '在售' WHERE id = 1")
+        resp = self.client.post("/orders/1/confirm")
+        self.assertEqual(resp.status_code, 500)
+        self.assertIn("数据异常", resp.get_data(as_text=True))
+        # 事务回滚，订单状态不变
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "待交易")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -384,7 +384,7 @@ def create_app(test_config=None):
                 "VALUES (?, ?, ?, '待交易')",
                 (item_id, g.user["id"], item["price"]))
             db.execute("COMMIT")
-            return redirect(url_for("index"))
+            return redirect(url_for("my_orders"))
         except sqlite3.IntegrityError:
             _rollback(db)
             flash("商品已被买走或已下架")
@@ -392,6 +392,90 @@ def create_app(test_config=None):
         except sqlite3.Error:
             _rollback(db)  # 异常路径一律回滚（规格要求），再抛给 500 处理
             raise
+
+    @app.route("/my-orders")
+    @login_required
+    def my_orders():
+        rows = get_db().execute(
+            "SELECT o.*, i.title AS item_title, i.status AS item_status, "
+            "u.username AS seller_name, u.contact AS seller_contact "
+            "FROM orders o JOIN items i ON o.item_id = i.id "
+            "JOIN users u ON i.seller_id = u.id "
+            "WHERE o.buyer_id = ? ORDER BY o.created_at DESC, o.id DESC",
+            (g.user["id"],)).fetchall()
+        return render_template("my_orders.html",
+                               orders=[with_display(r) for r in rows])
+
+    def _get_writable_order_or_403(order_id):
+        order = get_db().execute(
+            "SELECT o.*, i.seller_id FROM orders o "
+            "JOIN items i ON o.item_id = i.id WHERE o.id = ?",
+            (order_id,)).fetchone()
+        if order is None:
+            abort(404)
+        if g.user["id"] not in (order["buyer_id"], order["seller_id"]):
+            abort(403, description="只有订单双方可以操作")
+        return order
+
+    def _order_redirect(order):
+        """订单操作后按关系跳转：买家回我的订单，卖家回我的商品。"""
+        if g.user["id"] == order["buyer_id"]:
+            return redirect(url_for("my_orders"))
+        return redirect(url_for("my_items"))  # Task 11 把此处换成 url_for("sales")
+
+    @app.route("/orders/<int:order_id>/cancel", methods=("POST",))
+    @login_required
+    def cancel_order(order_id):
+        order = _get_writable_order_or_403(order_id)
+        db = get_db()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            cur = db.execute(
+                "UPDATE orders SET status = '已取消' WHERE id = ? AND status = '待交易'",
+                (order_id,))
+            if cur.rowcount == 0:
+                _rollback(db)
+                flash("订单状态已变更，无法取消")
+                return _order_redirect(order)
+            cur2 = db.execute(
+                "UPDATE items SET status = '在售' WHERE id = ? AND status = '已预订'",
+                (order["item_id"],))
+            if cur2.rowcount == 0:
+                _rollback(db)
+                abort(500, description="数据异常，请稍后重试")
+            db.execute("COMMIT")
+        except sqlite3.Error:
+            _rollback(db)
+            abort(500, description="数据异常，请稍后重试")
+        flash("订单已取消")
+        return _order_redirect(order)
+
+    @app.route("/orders/<int:order_id>/confirm", methods=("POST",))
+    @login_required
+    def confirm_order(order_id):
+        order = _get_writable_order_or_403(order_id)
+        db = get_db()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            cur = db.execute(
+                "UPDATE orders SET status = '已完成' WHERE id = ? AND status = '待交易'",
+                (order_id,))
+            if cur.rowcount == 0:
+                _rollback(db)
+                flash("订单状态已变更，无法确认")
+                return _order_redirect(order)
+            cur2 = db.execute(
+                "UPDATE items SET status = '已售' WHERE id = ? AND status = '已预订'",
+                (order["item_id"],))
+            if cur2.rowcount == 0:
+                _rollback(db)
+                abort(500, description="数据异常，请稍后重试")
+            db.execute("COMMIT")
+        except sqlite3.Error:
+            _rollback(db)
+            abort(500, description="数据异常，请稍后重试")
+        flash("交易已完成")
+        return _order_redirect(order)
 
     return app
 
