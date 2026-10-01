@@ -740,6 +740,18 @@ class MyOrdersTests(AppTestCase):
         self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
                          .fetchone()["status"], "待交易")
 
+    def test_delisted_item_title_plain_text(self):
+        self._setup_order()
+        self.client.post("/orders/1/cancel")
+        self.logout()
+        self.login("seller1", "password123")
+        self.client.post("/items/1/delist")
+        self.logout()
+        self.login("buyer1", "password123")
+        body = self.client.get("/my-orders").get_data(as_text=True)
+        self.assertIn("高等数学教材", body)          # 标题仍显示
+        self.assertNotIn('href="/items/1"', body)   # 但不渲染详情链接（下架对买家隐藏）
+
 
 if __name__ == "__main__":
     unittest.main()
