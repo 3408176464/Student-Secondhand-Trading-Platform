@@ -2042,6 +2042,18 @@ class MyOrdersTests(AppTestCase):
         # 事务回滚，订单状态不变
         self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
                          .fetchone()["status"], "待交易")
+
+    def test_delisted_item_title_plain_text(self):
+        self._setup_order()
+        self.client.post("/orders/1/cancel")
+        self.logout()
+        self.login("seller1", "password123")
+        self.client.post("/items/1/delist")
+        self.logout()
+        self.login("buyer1", "password123")
+        body = self.client.get("/my-orders").get_data(as_text=True)
+        self.assertIn("高等数学教材", body)          # 标题仍显示
+        self.assertNotIn('href="/items/1"', body)   # 但不渲染详情链接（下架对买家隐藏）
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -2200,7 +2212,7 @@ Expected: FAIL（`/my-orders` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 67 tests ... OK`
+Expected: `Ran 68 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -2250,7 +2262,8 @@ class SalesTests(AppTestCase):
 
     def test_seller_confirm_from_sales(self):
         self._setup_order()
-        self.client.post("/orders/1/confirm")
+        resp = self.client.post("/orders/1/confirm")
+        self.assertEqual(resp.headers["Location"], "/sales")  # 锁定 _order_redirect 卖家分支已切到 sales
         self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
                          .fetchone()["status"], "已完成")
         self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
@@ -2356,7 +2369,7 @@ Expected: FAIL（`/sales` 404）
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 71 tests ... OK`
+Expected: `Ran 72 tests ... OK`
 
 - [ ] **Step 5: 提交**
 
@@ -2368,6 +2381,8 @@ git commit -m "feat: 卖出记录——JOIN 查询买家信息与订单操作"
 ---
 
 ### Task 12: 设置页、POST 约束回归、README
+
+已决策事项（勿再反复）：订单操作对非参与方返回 403（规格明确要求，`test_third_party_cancel_403` 锁定），与"下架商品对非发布者 404 隐藏存在性"哲学上有差异——已知并接受，如要统一为 404 需连改规格+测试，作为独立改动另做，不在本任务范围。
 
 **Files:**
 - Modify: `campus_market/app.py`（新增 `settings` 路由）
@@ -2515,7 +2530,7 @@ Python + Flask + SQLite 的校园二手交易网站（数据库原理课程作�
 - [ ] **Step 4: 全量测试确认通过**
 
 Run: `cd campus_market && python -m unittest tests.test_app -v`
-Expected: `Ran 77 tests ... OK`（全部用例通过，0 失败）
+Expected: `Ran 78 tests ... OK`（全部用例通过，0 失败）
 
 - [ ] **Step 5: 手工冒烟验证**
 
