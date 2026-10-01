@@ -1954,7 +1954,7 @@ git commit -m "feat: 下单事务——价格快照、条件更新防超卖"
 ### Task 10: 我的订单（取消 / 确认 + 对方信息）
 
 **Files:**
-- Modify: `campus_market/app.py`（新增 `my_orders`、`cancel_order`、`confirm_order`、`_get_writable_order_or_403`；`place_order` 跳转改回 `my_orders`）
+- Modify: `campus_market/app.py`（新增 `my_orders`、`cancel_order`、`confirm_order`、`_get_writable_order_or_403`、`_order_redirect`；`place_order` 跳转改回 `my_orders`）
 - Create: `campus_market/templates/my_orders.html`
 - Modify: `campus_market/templates/base.html`（导航补「我的订单」）
 - Modify: `campus_market/tests/test_app.py`（追加 `MyOrdersTests`）
@@ -2078,6 +2078,12 @@ Expected: FAIL（`/my-orders` 404）
             abort(403, description="只有订单双方可以操作")
         return order
 
+    def _order_redirect(order):
+        """订单操作后按关系跳转：买家回我的订单，卖家回我的商品。"""
+        if g.user["id"] == order["buyer_id"]:
+            return redirect(url_for("my_orders"))
+        return redirect(url_for("my_items"))  # Task 11 把此处换成 url_for("sales")
+
     @app.route("/orders/<int:order_id>/cancel", methods=("POST",))
     @login_required
     def cancel_order(order_id):
@@ -2091,7 +2097,7 @@ Expected: FAIL（`/my-orders` 404）
             if cur.rowcount == 0:
                 _rollback(db)
                 flash("订单状态已变更，无法取消")
-                return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
+                return _order_redirect(order)
             cur2 = db.execute(
                 "UPDATE items SET status = '在售' WHERE id = ? AND status = '已预订'",
                 (order["item_id"],))
@@ -2103,7 +2109,7 @@ Expected: FAIL（`/my-orders` 404）
             _rollback(db)
             abort(500, description="数据异常，请稍后重试")
         flash("订单已取消")
-        return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
+        return _order_redirect(order)
 
     @app.route("/orders/<int:order_id>/confirm", methods=("POST",))
     @login_required
@@ -2118,7 +2124,7 @@ Expected: FAIL（`/my-orders` 404）
             if cur.rowcount == 0:
                 _rollback(db)
                 flash("订单状态已变更，无法确认")
-                return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
+                return _order_redirect(order)
             cur2 = db.execute(
                 "UPDATE items SET status = '已售' WHERE id = ? AND status = '已预订'",
                 (order["item_id"],))
@@ -2130,7 +2136,7 @@ Expected: FAIL（`/my-orders` 404）
             _rollback(db)
             abort(500, description="数据异常，请稍后重试")
         flash("交易已完成")
-        return redirect(url_for("my_orders") if g.user["id"] == order["buyer_id"] else url_for("sales"))
+        return _order_redirect(order)
 ```
 
 `campus_market/templates/my_orders.html`:
@@ -2272,6 +2278,8 @@ Run: `cd campus_market && python -m unittest tests.test_app.SalesTests -v`
 Expected: FAIL（`/sales` 404）
 
 - [ ] **Step 3: 实现 sales 路由与模板**
+
+先把 Task 10 留的跳转换掉：`_order_redirect` 里卖家分支的 `return redirect(url_for("my_items"))  # Task 11 把此处换成 url_for("sales")` 改为 `return redirect(url_for("sales"))`（删掉注释），卖家操作订单后落到卖出记录页。
 
 `campus_market/app.py` 追加：
 
