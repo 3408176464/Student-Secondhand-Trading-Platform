@@ -616,6 +616,7 @@ class PlaceOrderTests(AppTestCase):
         order = self.sql("SELECT * FROM orders").fetchone()
         self.assertEqual(order["price"], 2500)
         self.assertEqual(order["status"], "待交易")
+        self.assertEqual(order["buyer_id"], self.user_id("buyer1"))
 
     def test_buy_own_item_rejected(self):
         self.register("seller1", "password123", "")
@@ -645,6 +646,8 @@ class PlaceOrderTests(AppTestCase):
         self.assertIn("商品已被买走或已下架", resp.get_data(as_text=True))
         self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
                          .fetchone()["n"], 1)
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已预订")
 
     def test_buy_requires_login(self):
         self.register("seller1", "password123", "")

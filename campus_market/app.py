@@ -389,6 +389,9 @@ def create_app(test_config=None):
             _rollback(db)
             flash("商品已被买走或已下架")
             return redirect(url_for("index"))
+        except sqlite3.Error:
+            _rollback(db)  # 异常路径一律回滚（规格要求），再抛给 500 处理
+            raise
 
     return app
 
