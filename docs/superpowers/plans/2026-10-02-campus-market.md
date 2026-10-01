@@ -1438,11 +1438,13 @@ class PublishTests(AppTestCase):
         self.login("seller1", "password123")
         resp = self.create_item()
         body = resp.get_data(as_text=True)
-        self.assertIn("高等数学教材", body)   # 落在我的商品页
+        self.assertIn("高等数学教材", body)   # 落地页展示商品（Task 8 前是市场页，Task 8 后是我的商品页）
         self.assertIn("25.00", body)
         row = self.sql("SELECT * FROM items").fetchone()
         self.assertEqual(row["price"], 2500)
         self.assertEqual(row["status"], "在售")
+        self.assertEqual(row["seller_id"], self.user_id("seller1"))
+        self.assertEqual(row["category_id"], 1)
 
     def test_publish_appears_on_market(self):
         self.register("seller1", "password123", "")
@@ -1463,6 +1465,7 @@ class PublishTests(AppTestCase):
         for bad in ("19.999", "abc", "-5"):
             resp = self.create_item(price=bad)
             self.assertIn("价格格式不合法", resp.get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM items").fetchone()["n"], 0)
 
     def test_publish_requires_login(self):
         resp = self.client.get("/publish")
@@ -1511,12 +1514,14 @@ Expected: FAIL（`/publish` 404）
                     "status, category_id, seller_id) VALUES (?, ?, ?, ?, '在售', ?, ?)",
                     (title, price, condition, description,
                      valid_cat["id"], g.user["id"]))
-                return redirect(url_for("my_items"))
+                return redirect(url_for("index"))  # Task 8 实现 my_items 后改回
             flash(error)
         categories = db.execute("SELECT * FROM categories ORDER BY id").fetchall()
         return render_template("publish.html", categories=categories,
                                conditions=CONDITIONS)
 ```
+
+注意：成功跳转目标是 `index`——`my_items` 端点 Task 8 才建，现在写 `url_for("my_items")` 会 `BuildError`。**Task 8 Step 3 有专门一步把它换回 `my_items`。**
 
 `campus_market/templates/publish.html`:
 
@@ -1646,6 +1651,8 @@ Run: `cd campus_market && python -m unittest tests.test_app.MyItemsTests -v`
 Expected: FAIL（`/my-items` 404）
 
 - [ ] **Step 3: 实现路由与模板**
+
+先把 Task 7 留的跳转换掉：`publish` 路由成功分支的 `return redirect(url_for("index"))  # Task 8 实现 my_items 后改回` 改为 `return redirect(url_for("my_items"))`（删掉注释），发布成功后落到我的商品页。
 
 `campus_market/app.py` 追加：
 
