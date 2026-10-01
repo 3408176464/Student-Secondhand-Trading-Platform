@@ -502,6 +502,7 @@ class PublishTests(AppTestCase):
             "title": "高等数学教材", "price": "25.00", "category_id": 1,
             "condition": "九成新", "description": "有少量笔记",
         })
+        self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.headers["Location"], "/my-items")  # 发布成功落在我的商品页
         body = self.client.get("/my-items").get_data(as_text=True)
         self.assertIn("高等数学教材", body)
@@ -663,6 +664,19 @@ class PlaceOrderTests(AppTestCase):
         self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
                          .fetchone()["n"], 0)
 
+    def test_full_lifecycle_rebuy_after_cancel(self):
+        # 规格第 7 节：下单→取消→再下单→确认完成；唯一索引不误拦历史订单
+        self._seller_and_buyer()
+        self.client.post("/items/1/buy")
+        self.client.post("/orders/1/cancel")
+        self.client.post("/items/1/buy")
+        self.client.post("/orders/2/confirm")
+        self.assertEqual(self.sql("SELECT status FROM items WHERE id = 1")
+                         .fetchone()["status"], "已售")
+        statuses = [r["status"] for r in self.sql(
+            "SELECT status FROM orders WHERE item_id = 1 ORDER BY id")]
+        self.assertEqual(statuses, ["已取消", "已完成"])
+
 
 class MyOrdersTests(AppTestCase):
     def _setup_order(self, buyer_contact="wx_buyer", seller_contact="wx_seller"):
@@ -690,7 +704,7 @@ class MyOrdersTests(AppTestCase):
         self._setup_order()
         self.client.post("/orders/1/cancel")
         body = self.client.get("/my-orders").get_data(as_text=True)
-        self.assertIn("已取消", body)
+        self.assertIn('<span class="badge">已取消</span>', body)  # 断言表格状态单元格，排除 flash 误命中
 
     def test_buyer_cancel_restores_item(self):
         self._setup_order()
@@ -830,6 +844,7 @@ class SettingsTests(AppTestCase):
     def test_settings_update_contact(self):
         self.register("alice", "password123", "old_wx")
         self.login("alice", "password123")
+        self.assertIn("old_wx", self.client.get("/settings").get_data(as_text=True))
         resp = self.client.post("/settings", data={"contact": "new_wx"},
                                 follow_redirects=True)
         self.assertIn("联系方式已保存", resp.get_data(as_text=True))
@@ -866,6 +881,7 @@ class SettingsTests(AppTestCase):
         self.register("buyer1", "password123", "")
         self.login("buyer1", "password123")
         self.client.post("/items/1/buy")
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders").fetchone()["n"], 1)
         for path in ("/items/1/delist", "/items/1/price", "/items/1/buy",
                      "/orders/1/cancel", "/orders/1/confirm"):
             self.assertEqual(self.client.get(path).status_code, 405)
@@ -873,7 +889,6 @@ class SettingsTests(AppTestCase):
     def test_created_at_displayed_local(self):
         self.register("seller1", "password123", "")
         self.login("seller1", "password123")
-        self.sql("UPDATE users SET created_at = '2026-10-01 04:00:00' WHERE username = 'seller1'")
         self.create_item()
         self.sql("UPDATE items SET created_at = '2026-10-01 04:00:00'")
         body = self.client.get("/my-items").get_data(as_text=True)
