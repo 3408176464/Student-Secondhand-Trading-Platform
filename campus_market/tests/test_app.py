@@ -421,6 +421,21 @@ class DetailTests(AppTestCase):
             self.assertEqual(resp.status_code, 302)
             self.assertIn("/login", resp.headers["Location"])
 
+    def test_logged_in_can_view_reserved_sold(self):
+        sid = self._seller_with_items()
+        # 登录的无关用户可看（订单页跳回路径）
+        self.register("buyer1", "password123", "")
+        self.login("buyer1", "password123")
+        for path, title in (("/items/2", "已预订商品"), ("/items/3", "已售商品")):
+            resp = self.client.get(path)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(title, resp.get_data(as_text=True))
+        # 买家看自己买到的已售商品同样可看
+        self.insert_item(sid, "买走的商品", 1000, status="已售")
+        self.sql("INSERT INTO orders (item_id, buyer_id, price, status) "
+                 "VALUES (5, ?, 1000, '已完成')", (self.user_id("buyer1"),))
+        self.assertIn("买走的商品", self.client.get("/items/5").get_data(as_text=True))
+
     def test_delisted_404_for_anon_and_others(self):
         self._seller_with_items()
         self.assertEqual(self.client.get("/items/4").status_code, 404)
@@ -455,6 +470,16 @@ class DetailTests(AppTestCase):
         self.login("buyer1", "password123")
         body = self.client.get("/items/1").get_data(as_text=True)
         self.assertIn("卖家未填写联系方式", body)
+        # 有联系方式的卖家：显示真实值
+        self.logout()
+        self.register("seller2", "password123", "wx_seller2")
+        self.login("seller2", "password123")
+        sid2 = self.user_id("seller2")
+        self.insert_item(sid2, "卖家2的书", 1000)
+        self.logout()
+        self.login("buyer1", "password123")
+        body = self.client.get("/items/5").get_data(as_text=True)
+        self.assertIn("wx_seller2", body)
 
 
 if __name__ == "__main__":

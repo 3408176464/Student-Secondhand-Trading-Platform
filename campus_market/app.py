@@ -249,7 +249,7 @@ def create_app(test_config=None):
             abort(404)
         if item["status"] == "下架":
             if g.user is None or g.user["id"] != item["seller_id"]:
-                abort(404, description="商品已下架")
+                abort(404)  # 不带文案：透露"已下架"会泄露商品存在性，违背下架即隐藏
         elif item["status"] in ("已预订", "已售") and g.user is None:
             return redirect(url_for("login"))
         can_buy = (g.user is not None and item["status"] == "在售"
