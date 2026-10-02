@@ -677,6 +677,24 @@ class PlaceOrderTests(AppTestCase):
             "SELECT status FROM orders WHERE item_id = 1 ORDER BY id")]
         self.assertEqual(statuses, ["已取消", "已完成"])
 
+    def test_same_account_buys_and_sells(self):
+        # 规格第 7 节：同一账号既买又卖（全员可买可卖模型）
+        self.register("alice", "password123", "")
+        self.login("alice", "password123")
+        self.create_item(title="甲的商品")          # item 1，alice 是卖家
+        self.logout()
+        self.register("bob", "password123", "")
+        self.login("bob", "password123")
+        self.create_item(title="乙的商品")          # item 2，bob 是卖家
+        self.client.post("/items/1/buy")            # bob 买 alice 的
+        self.logout()
+        self.login("alice", "password123")
+        self.client.post("/items/2/buy")            # alice 买 bob 的
+        self.assertIn("乙的商品", self.client.get("/my-orders").get_data(as_text=True))
+        self.assertIn("甲的商品", self.client.get("/sales").get_data(as_text=True))
+        self.assertEqual(self.sql("SELECT COUNT(*) AS n FROM orders")
+                         .fetchone()["n"], 2)
+
 
 class MyOrdersTests(AppTestCase):
     def _setup_order(self, buyer_contact="wx_buyer", seller_contact="wx_seller"):
@@ -754,6 +772,16 @@ class MyOrdersTests(AppTestCase):
         self.assertEqual(resp.status_code, 500)
         self.assertIn("数据异常", resp.get_data(as_text=True))
         # 事务回滚，订单状态不变
+        self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
+                         .fetchone()["status"], "待交易")
+
+    def test_cancel_data_inconsistency_500(self):
+        self._setup_order()
+        # 同样的不一致场景走取消路径（规格第 7 节"完成/取消时"）
+        self.sql("UPDATE items SET status = '已售' WHERE id = 1")
+        resp = self.client.post("/orders/1/cancel")
+        self.assertEqual(resp.status_code, 500)
+        self.assertIn("数据异常", resp.get_data(as_text=True))
         self.assertEqual(self.sql("SELECT status FROM orders WHERE id = 1")
                          .fetchone()["status"], "待交易")
 
