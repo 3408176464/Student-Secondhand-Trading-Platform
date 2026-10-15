@@ -1,9 +1,17 @@
 {% extends "base.html" %}
 {% block title %}我的订单{% endblock %}
 {% block content %}
-<h1>我的订单</h1>
+<div class="page-head">
+  <h1>我的订单</h1>
+  <p class="lead">你买到的商品记录</p>
+</div>
+
+<div class="table-wrap">
 <table>
-  <tr><th>商品</th><th>成交价</th><th>状态</th><th>卖家</th><th>联系方式</th><th>下单时间</th><th>操作</th></tr>
+  <thead>
+    <tr><th>商品</th><th>成交价</th><th>状态</th><th>卖家</th><th>联系方式</th><th>下单时间</th><th>操作</th></tr>
+  </thead>
+  <tbody>
   {% for o in orders %}
   <tr>
     <td>
@@ -11,15 +19,15 @@
         <a href="{{ url_for('item_detail', item_id=o.item_id) }}">{{ o.item_title }}</a>
       {% else %}{{ o.item_title }}{% endif %}
     </td>
-    <td>¥{{ o.price_display }}</td>
+    <td><span class="price">¥{{ o.price_display }}</span></td>
     <td><span class="badge">{{ o.status }}</span></td>
     <td>{{ o.seller_name }}</td>
     <td>{{ o.seller_contact or '对方未填写联系方式' }}</td>
-    <td>{{ o.created_at_local }}</td>
+    <td class="meta">{{ o.created_at_local }}</td>
     <td>
       {% if o.status == '待交易' %}
       <form action="{{ url_for('cancel_order', order_id=o.id) }}" method="post" class="inline">
-        <button type="submit" class="danger">取消</button>
+        <button type="submit" class="btn-danger">取消</button>
       </form>
       <form action="{{ url_for('confirm_order', order_id=o.id) }}" method="post" class="inline">
         <button type="submit">确认完成</button>
@@ -28,7 +36,9 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="7">还没有订单</td></tr>
+  <tr><td colspan="7"><div class="empty">还没有订单</div></td></tr>
   {% endfor %}
+  </tbody>
 </table>
+</div>
 {% endblock %}

@@ -1,20 +1,29 @@
 {% extends "base.html" %}
 {% block title %}商品市场{% endblock %}
 {% block content %}
-<h1>商品市场</h1>
-<form method="get" class="filter-bar">
-  <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="搜索商品名">
-  <input type="text" name="min_price" value="{{ request.args.get('min_price', '') }}" placeholder="最低价">
-  <input type="text" name="max_price" value="{{ request.args.get('max_price', '') }}" placeholder="最高价">
-  <input type="hidden" name="category_id" value="{{ request.args.get('category_id', '') }}">
-  <button type="submit">筛选</button>
-</form>
-<p class="meta">
-  <a href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', '')) }}">全部</a>
-  {% for c in categories %}
-    <a href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', ''), category_id=c.id) }}">{{ c.name }}</a>
-  {% endfor %}
-</p>
+<div class="page-head">
+  <h1>商品市场</h1>
+  <p class="lead">校内同学的闲置好物，搜索或按分类、价格挑选</p>
+</div>
+
+<div class="filter-panel">
+  <form method="get" class="filter-bar">
+    <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="搜索商品名" aria-label="搜索商品名">
+    <input type="text" name="min_price" value="{{ request.args.get('min_price', '') }}" placeholder="最低价" aria-label="最低价">
+    <input type="text" name="max_price" value="{{ request.args.get('max_price', '') }}" placeholder="最高价" aria-label="最高价">
+    <input type="hidden" name="category_id" value="{{ request.args.get('category_id', '') }}">
+    <button type="submit"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>筛选</button>
+  </form>
+  <div class="chips">
+    <a class="chip {% if not request.args.get('category_id') %}active{% endif %}"
+       href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', '')) }}">全部</a>
+    {% for c in categories %}
+    <a class="chip {% if request.args.get('category_id') == c.id|string %}active{% endif %}"
+       href="{{ url_for('index', q=request.args.get('q', ''), min_price=request.args.get('min_price', ''), max_price=request.args.get('max_price', ''), category_id=c.id) }}">{{ c.name }}</a>
+    {% endfor %}
+  </div>
+</div>
+
 <ul class="item-list">
   {% for item in items %}
   <li class="item-card">
@@ -23,7 +32,7 @@
     <div class="meta">{{ item.condition }} · {{ item.category_name }} · 卖家 {{ item.seller_name }}</div>
   </li>
   {% else %}
-  <li>暂无商品</li>
+  <li class="empty">暂无商品</li>
   {% endfor %}
 </ul>
 {% endblock %}
