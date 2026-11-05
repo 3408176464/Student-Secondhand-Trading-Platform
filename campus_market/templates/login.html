@@ -4,6 +4,7 @@
 <div class="form-card">
   <h1>登录</h1>
   <form method="post">
+      {{ csrf_field() }}
     <p>
       <label for="username">用户名</label>
       <input id="username" name="username" required autocomplete="username">

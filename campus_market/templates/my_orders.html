@@ -1,44 +1,85 @@
 {% extends "base.html" %}
 {% block title %}我的订单{% endblock %}
 {% block content %}
+{% set status_class = {'待接单': 'st-pending', '待交付': 'st-dealing', '已完成': 'st-done', '已取消': 'st-cancelled'} %}
+{% set done_map = {'待接单': 1, '待交付': 2, '已完成': 4, '已取消': 0} %}
+{% set cur_map = {'待接单': 2, '待交付': 3, '已完成': 0, '已取消': 0} %}
+{% set track_labels = ['买家下单', '卖家接单', '当面交付', '双方确认'] %}
 <div class="page-head">
   <h1>我的订单</h1>
-  <p class="lead">你买到的商品记录</p>
+  <p class="lead">下单后等卖家接单，见面交易后双方各自确认，交易才算完成</p>
 </div>
 
-<div class="table-wrap">
-<table>
-  <thead>
-    <tr><th>商品</th><th>成交价</th><th>状态</th><th>卖家</th><th>联系方式</th><th>下单时间</th><th>操作</th></tr>
-  </thead>
-  <tbody>
+<ul class="order-list">
   {% for o in orders %}
-  <tr>
-    <td>
-      {% if o.item_status != '下架' %}
-        <a href="{{ url_for('item_detail', item_id=o.item_id) }}">{{ o.item_title }}</a>
-      {% else %}{{ o.item_title }}{% endif %}
-    </td>
-    <td><span class="price">¥{{ o.price_display }}</span></td>
-    <td><span class="badge">{{ o.status }}</span></td>
-    <td>{{ o.seller_name }}</td>
-    <td>{{ o.seller_contact or '对方未填写联系方式' }}</td>
-    <td class="meta">{{ o.created_at_local }}</td>
-    <td>
-      {% if o.status == '待交易' %}
-      <form action="{{ url_for('cancel_order', order_id=o.id) }}" method="post" class="inline">
-        <button type="submit" class="btn-danger">取消</button>
+  {% set done_n = done_map.get(o.status, 1) %}
+  {% set cur_n = cur_map.get(o.status, 1) %}
+  {% if o.status == '待交付' and o.seller_confirm_at %}
+    {% set done_n = 3 %}{% set cur_n = 4 %}
+  {% endif %}
+  <li class="order-card">
+    <div class="order-head">
+      <div class="order-title">
+        {% if o.item_status != '下架' %}
+          <a href="{{ url_for('item_detail', item_id=o.item_id) }}">{{ o.item_title }}</a>
+        {% else %}{{ o.item_title }}{% endif %}
+        <span class="badge {{ status_class.get(o.status, '') }}">{{ o.status }}</span>
+      </div>
+      <span class="price">¥{{ o.price_display }}</span>
+    </div>
+
+    {% if o.status != '已取消' %}
+    <div class="order-track" aria-hidden="true">
+      {% for label in track_labels %}
+      <div class="track-step {% if loop.index <= done_n %}done{% elif loop.index == cur_n %}current{% endif %}">
+        <span class="track-bar"></span>
+        <span class="track-label">{{ label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <p class="order-hint">
+      {{ o.status_hint }}
+      {% if o.status == '待接单' and order_timeout_minutes %}
+        · 卖家 {{ '%g'|format(order_timeout_minutes / 60) }} 小时内未接单会自动取消，商品重新上架
+      {% endif %}
+      {% if o.status == '已取消' and o.cancel_by %} · 由{{ o.cancel_by }}取消{% endif %}
+    </p>
+
+    {% if o.status == '待交付' %}
+    <div class="deal-code">
+      <span>见面核对码</span>
+      <strong>{{ o.deal_code }}</strong>
+      <span class="deal-hint">当面让对方报一遍，对上再给货</span>
+    </div>
+    {% endif %}
+
+    <dl class="order-meta">
+      <div><dt>卖家</dt><dd>{{ o.seller_name }}</dd></div>
+      <div><dt>联系方式</dt><dd>{{ o.seller_contact or '对方未填写联系方式' }}</dd></div>
+      <div><dt>下单时间</dt><dd>{{ o.created_at_local }}</dd></div>
+    </dl>
+
+    {% if o.can_receive or o.can_cancel %}
+    <div class="actions">
+      {% if o.can_receive %}
+      <form action="{{ url_for('receive_order', order_id=o.id) }}" method="post">
+      {{ csrf_field() }}
+        <button type="submit" class="btn-accent">我收到货了</button>
       </form>
-      <form action="{{ url_for('confirm_order', order_id=o.id) }}" method="post" class="inline">
-        <button type="submit">确认完成</button>
+      {% endif %}
+      {% if o.can_cancel %}
+      <form action="{{ url_for('cancel_order', order_id=o.id) }}" method="post">
+      {{ csrf_field() }}
+        <button type="submit" class="btn-danger" onclick="return confirm('确定取消这笔订单吗？取消后商品会重新上架。');">取消订单</button>
       </form>
-      {% else %}—{% endif %}
-    </td>
-  </tr>
+      {% endif %}
+    </div>
+    {% endif %}
+  </li>
   {% else %}
-  <tr><td colspan="7"><div class="empty">还没有订单</div></td></tr>
+  <li class="empty">还没有订单</li>
   {% endfor %}
-  </tbody>
-</table>
-</div>
+</ul>
 {% endblock %}

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}校园二手交易平台{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -42,6 +43,18 @@
     <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
       <circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>
     </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/><path d="M8 12.2l2.8 2.8L16 9.6"/>
+    </symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v9z"/><path d="M8.5 9.5h7M8.5 13h4"/>
+    </symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 6.5l-5.5 5.5 5.5 5.5"/>
+    </symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.5 6.5l5.5 5.5-5.5 5.5"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -58,12 +71,16 @@
         <a href="{{ url_for('my_orders') }}" {% if request.endpoint == 'my_orders' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-receipt"/></svg>我的订单</a>
         <a href="{{ url_for('sales') }}" {% if request.endpoint == 'sales' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>卖出记录</a>
         <a href="{{ url_for('my_items') }}" {% if request.endpoint == 'my_items' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-box"/></svg>我的商品</a>
+        <a href="{{ url_for('messages') }}" {% if request.endpoint in ('messages', 'thread') %}aria-current="page"{% endif %}>
+          <svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>消息{% if g.unread %}<span class="nav-badge">{{ g.unread }}</span>{% endif %}
+        </a>
         <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg>设置</a>
       {% endif %}
     </nav>
     <div class="nav-right">
       {% if g.user %}
         <form action="{{ url_for('logout') }}" method="post" class="inline">
+      {{ csrf_field() }}
           <button type="submit"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg>登出</button>
         </form>
       {% else %}
@@ -75,9 +92,10 @@
 </header>
 
 <main>
-  {% for message in get_flashed_messages() %}
-    <div class="flash" role="status">
-      <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+    {% set kind = 'ok' if category == 'ok' else ('warn' if category == 'warn' else 'error') %}
+    <div class="flash flash-{{ kind }}" role="status">
+      <svg class="icon" aria-hidden="true"><use href="{{ '#i-check' if kind == 'ok' else '#i-alert' }}"/></svg>
       {{ message }}
     </div>
   {% endfor %}
@@ -85,5 +103,6 @@
 </main>
 
 <footer class="footer">校园二手交易平台 · 校内闲置流转</footer>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -3,7 +3,8 @@
 {% block content %}
 <div class="form-card">
   <h1>发布商品</h1>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
+      {{ csrf_field() }}
     <p>
       <label for="title">商品名</label>
       <input id="title" name="title" required>
@@ -27,6 +28,11 @@
     <p>
       <label for="description">描述</label>
       <textarea id="description" name="description"></textarea>
+    </p>
+    <p>
+      <label for="images">图片（可选，最多 5 张，单张 5MB 内）</label>
+      <input id="images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+      <small class="field-hint">支持 JPG / PNG / WebP。有图的东西卖得快得多。</small>
     </p>
     <button type="submit">发布</button>
   </form>

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}消息{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>消息</h1>
+  <p class="lead">和买卖双方聊价格、约见面时间</p>
+</div>
+
+{% if conversations %}
+<ul class="conv-list">
+  {% for c in conversations %}
+  <li>
+    <a class="conv" href="{{ url_for('thread', item_id=c.item_id, buyer_id=c.buyer_id) }}">
+      <div class="conv-main">
+        <div class="conv-top">
+          <span class="conv-name">{{ c.peer_name }}</span>
+          <span class="conv-role">{{ '我卖' if c.role == 'seller' else '我买' }}</span>
+          <span class="conv-time">{{ c.last_at }}</span>
+        </div>
+        <div class="conv-item">{{ c.item_title }} · ¥{{ c.item_price_display }}</div>
+        <div class="conv-last {% if c.last_kind == 'offer' %}is-offer{% endif %}">
+          {% if c.last_kind == 'offer' %}💰 {% endif %}{{ c.last_message }}
+        </div>
+      </div>
+      {% if c.unread %}<span class="nav-badge">{{ c.unread }}</span>{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty">还没有会话。去商品详情页点「问问卖家」，聊聊价格和见面时间。</div>
+{% endif %}
+{% endblock %}

@@ -1,39 +1,53 @@
 {% extends "base.html" %}
 {% block title %}我的商品{% endblock %}
 {% block content %}
+{% set item_status_class = {'在售': 'on-sale', '已预订': 'reserved', '已售': 'sold', '下架': 'off'} %}
+{% set status_hint = {'已预订': '已有订单在进行，交易完成后会自动转为已售', '已售': '已完成交易，作为成交记录保留', '下架': '已下架，不再对外展示'} %}
 <div class="page-head">
-  <h1>我的商品</h1>
-  <p class="lead">你发布的闲置物品</p>
+  <div>
+    <h1>我的商品</h1>
+    <p class="lead">你发布的闲置物品</p>
+  </div>
+  <p class="result-count">共 <strong>{{ items|length }}</strong> 件</p>
 </div>
 
-<div class="table-wrap">
-<table>
-  <thead>
-    <tr><th>商品</th><th>价格</th><th>状态</th><th>发布时间</th><th>操作</th></tr>
-  </thead>
-  <tbody>
+<ul class="my-item-list">
   {% for item in items %}
-  <tr>
-    <td><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.title }}</a></td>
-    <td><span class="price">¥{{ item.price_display }}</span></td>
-    <td><span class="badge">{{ item.status }}</span></td>
-    <td class="meta">{{ item.created_at_local }}</td>
-    <td>
+  <li class="my-item-card">
+    <a class="my-item-thumb {% if not item.cover_url %}no-photo{% endif %}"
+       href="{{ url_for('item_detail', item_id=item.id) }}">
+      {% if item.cover_url %}
+        <img src="{{ item.cover_url }}" alt="{{ item.title }}" loading="lazy">
+      {% else %}
+        <span>无图</span>
+      {% endif %}
+    </a>
+    <div class="my-item-body">
+      <div class="order-head">
+        <div class="order-title">
+          <a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.title }}</a>
+          <span class="badge {{ item_status_class.get(item.status, '') }}">{{ item.status }}</span>
+        </div>
+        <span class="price">¥{{ item.price_display }}</span>
+      </div>
+      <div class="meta">{{ item.category_name }} · {{ item.created_at_local }} 发布</div>
+
       {% if item.status == '在售' %}
-      <form action="{{ url_for('edit_item_price', item_id=item.id) }}" method="post" class="inline">
-        <input name="price" value="{{ item.price_display }}" size="6" aria-label="新价格">
-        <button type="submit" class="btn-ghost">改价</button>
-      </form>
-      <form action="{{ url_for('delist_item', item_id=item.id) }}" method="post" class="inline">
-        <button type="submit" class="btn-danger">下架（不可恢复）</button>
-      </form>
-      {% else %}—{% endif %}
-    </td>
-  </tr>
+      <div class="actions">
+        <a class="btn btn-ghost" href="{{ url_for('edit_item', item_id=item.id) }}">编辑</a>
+        <form action="{{ url_for('delist_item', item_id=item.id) }}" method="post">
+          {{ csrf_field() }}
+          <button type="submit" class="btn-danger"
+                  onclick="return confirm('下架后不可恢复，确定要下架吗？');">下架（不可恢复）</button>
+        </form>
+      </div>
+      {% else %}
+      <p class="order-hint">{{ status_hint.get(item.status, '') }}</p>
+      {% endif %}
+    </div>
+  </li>
   {% else %}
-  <tr><td colspan="5"><div class="empty">还没有发布商品</div></td></tr>
+  <li class="empty">还没有发布商品</li>
   {% endfor %}
-  </tbody>
-</table>
-</div>
+</ul>
 {% endblock %}

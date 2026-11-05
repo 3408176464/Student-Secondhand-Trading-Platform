@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}编辑 {{ item.title }}{% endblock %}
+{% block content %}
+<div class="form-card form-card-wide">
+  <h1>编辑商品</h1>
+  <p class="lead">改完点保存。有订单在进行时不能再改，免得买家看到的和谈好的不一致。</p>
+  <form method="post" enctype="multipart/form-data">
+    {{ csrf_field() }}
+    <p>
+      <label for="title">商品名</label>
+      <input id="title" name="title" value="{{ item.title }}" required maxlength="60">
+    </p>
+    <p>
+      <label for="category_id">分类</label>
+      <select id="category_id" name="category_id">
+        {% for c in categories %}
+        <option value="{{ c.id }}" {% if c.id == item.category_id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </p>
+    <p>
+      <label for="price">价格（元）</label>
+      <input id="price" name="price" value="{{ item.price_display }}" required inputmode="decimal">
+    </p>
+    <p>
+      <label for="condition">成色</label>
+      <select id="condition" name="condition">
+        {% for c in conditions %}
+        <option value="{{ c }}" {% if c == item.condition %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </p>
+    <p>
+      <label for="description">描述</label>
+      <textarea id="description" name="description">{{ item.description or '' }}</textarea>
+    </p>
+
+    {% if photos %}
+    <div class="photo-manage">
+      <span class="field-label">现有图片（{{ photos|length }} / {{ max_images }}）</span>
+      <ul class="photo-grid">
+        {% for p in photos %}
+        <li>
+          <img src="{{ p.url }}" alt="商品图 {{ loop.index }}" loading="lazy">
+          <form action="{{ url_for('delete_item_image', item_id=item.id, image_id=p.id) }}"
+                method="post" onsubmit="return confirm('删除这张图片？删掉就找不回来了。');">
+            {{ csrf_field() }}
+            <button type="submit" class="photo-del" aria-label="删除第 {{ loop.index }} 张图片">×</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <p>
+      <label for="images">再加图片（还能加 {{ max_images - photos|length }} 张，单张 5MB 内）</label>
+      <input id="images" name="images" type="file"
+             accept="image/jpeg,image/png,image/webp" multiple>
+      <small class="field-hint">支持 JPG / PNG / WebP。排在第一张的图会作为市场列表的封面。</small>
+    </p>
+
+    <div class="form-actions">
+      <button type="submit">保存</button>
+      <a class="btn btn-ghost" href="{{ url_for('my_items') }}">返回我的商品</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -4,6 +4,7 @@
 <div class="form-card">
   <h1>设置</h1>
   <form method="post">
+      {{ csrf_field() }}
     <p>
       <label for="contact">联系方式</label>
       <input id="contact" name="contact" value="{{ g.user.contact or '' }}" autocomplete="tel">

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}与 {{ peer_name }} 的对话{% endblock %}
+{% block content %}
+<div class="thread-head">
+  <a class="back" href="{{ url_for('messages') }}">‹ 消息</a>
+  <div class="thread-title">
+    <a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.title }}</a>
+    <span class="badge">{{ item.status }}</span>
+  </div>
+  <div class="muted">{{ '买家' if is_seller else '卖家' }}：{{ peer_name }} · 当前标价 ¥{{ item.price_display }}</div>
+</div>
+
+<div class="bubbles" data-thread="{{ url_for('thread_updates', item_id=item.id, buyer_id=buyer_id) }}"
+     data-last="{{ messages[-1].id if messages else 0 }}"
+     data-csrf="{{ csrf_token() }}"
+     data-seller="{{ '1' if is_seller else '0' }}"
+     data-onsale="{{ '1' if item.status == '在售' else '0' }}">
+  {% if has_older %}
+  <div class="load-older">
+    <a href="{{ url_for('thread', item_id=item.id, buyer_id=buyer_id, before=messages[0].id) }}">
+      查看更早的消息
+    </a>
+  </div>
+  {% endif %}
+  {% for m in messages %}
+  <div class="bubble-row {{ 'mine' if m.mine else 'peer' }}" id="m{{ m.id }}">
+    <div class="bubble {{ 'bubble-offer' if m.kind == 'offer' else '' }}">
+      {% if m.kind == 'offer' %}
+        <div class="offer-tag">出价 ¥{{ m.offer_display }}{% if m.accepted %} · 已接受{% endif %}</div>
+      {% endif %}
+      <div class="bubble-text">{{ m.body }}</div>
+      <div class="bubble-time">{{ m.created_at }}</div>
+      {% if m.kind == 'offer' and is_seller and not m.accepted and item.status == '在售' %}
+      <form action="{{ url_for('accept_offer', message_id=m.id) }}" method="post" class="inline">
+      {{ csrf_field() }}
+        <button type="submit" class="btn-accent bubble-btn">接受这个价</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">
+    {% if is_seller %}还没有买家咨询这件商品{% else %}先打个招呼，问问能不能便宜点、什么时候方便见面{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<form method="post" class="composer">
+      {{ csrf_field() }}
+  <textarea name="body" placeholder="说点什么…（可选填报价）" maxlength="500" required></textarea>
+  <div class="composer-bar">
+    {% if not is_seller %}
+    <input name="offer_price" placeholder="报价（元，可不填）" inputmode="decimal" class="offer-input">
+    <span class="field-hint">填了报价，卖家可以一键接受</span>
+    {% endif %}
+    <button type="submit">发送</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* 新消息轮询：每 5 秒问一次有没有比我手上最后一条更新的，有就追加。
+   页面切到后台时暂停，切回来立刻补一次；不用 SSE，避免引入常连接。 */
+(function () {
+  var box = document.querySelector('.bubbles[data-thread]');
+  if (!box || !window.fetch) return;
+  var url = box.dataset.thread;
+  var last = Number(box.dataset.last || 0);
+  var csrf = box.dataset.csrf;
+  var isSeller = box.dataset.seller === '1';
+  var onSale = box.dataset.onsale === '1';
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  function render(m) {
+    var row = el('div', 'bubble-row ' + (m.mine ? 'mine' : 'peer'));
+    row.id = 'm' + m.id;
+    var bubble = el('div', 'bubble' + (m.kind === 'offer' ? ' bubble-offer' : ''));
+    if (m.kind === 'offer') {
+      bubble.appendChild(el('div', 'offer-tag',
+        '出价 ¥' + m.offer_display + (m.accepted ? ' · 已接受' : '')));
+    }
+    bubble.appendChild(el('div', 'bubble-text', m.body));
+    bubble.appendChild(el('div', 'bubble-time', m.created_at));
+    if (m.kind === 'offer' && isSeller && onSale && !m.accepted) {
+      var form = el('form', 'inline');
+      form.method = 'post';
+      form.action = '/messages/accept/' + m.id;
+      var token = el('input');
+      token.type = 'hidden';
+      token.name = 'csrf_token';
+      token.value = csrf;
+      var btn = el('button', 'btn-accent bubble-btn', '接受这个价');
+      btn.type = 'submit';
+      form.appendChild(token);
+      form.appendChild(btn);
+      bubble.appendChild(form);
+    }
+    row.appendChild(bubble);
+    return row;
+  }
+
+  function poll() {
+    fetch(url + '?after=' + last, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !data.messages || !data.messages.length) return;
+        var empty = box.querySelector('.empty');
+        if (empty) empty.remove();
+        data.messages.forEach(function (m) {
+          box.appendChild(render(m));
+          if (m.id > last) last = m.id;
+        });
+        window.scrollTo(0, document.body.scrollHeight);
+      })
+      .catch(function () { /* 网络抖动就下次再试 */ });
+  }
+
+  setInterval(function () {
+    if (!document.hidden) poll();
+  }, 5000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) poll();
+  });
+})();
+</script>
+{% endblock %}

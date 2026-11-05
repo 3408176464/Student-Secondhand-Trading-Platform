@@ -1,8 +1,46 @@
 {% extends "base.html" %}
 {% block title %}{{ item.title }}{% endblock %}
 {% block content %}
+{% set photo_count = image_urls|length %}
 <div class="detail">
   <div class="detail-card">
+    {% if photo_count %}
+    <div class="gallery" data-gallery>
+      <div class="gallery-stage">
+        {# 不用 JS 也能左右滑动：靠滚动容器 + scroll-snap，脚本只负责按钮和缩略图 #}
+        <div class="gallery-track" tabindex="0" role="group"
+             aria-label="商品图片，共 {{ photo_count }} 张，左右方向键切换">
+          {% for src in image_urls %}
+          <figure class="gallery-slide">
+            <a href="{{ src }}" target="_blank" rel="noopener" title="查看原图">
+              <img src="{{ src }}" alt="{{ item.title }} 第 {{ loop.index }} 张图"
+                   {% if loop.index > 1 %}loading="lazy"{% endif %}>
+            </a>
+          </figure>
+          {% endfor %}
+        </div>
+        {% if photo_count > 1 %}
+        <button type="button" class="gallery-nav prev" data-step="-1" aria-label="上一张">
+          <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>
+        </button>
+        <button type="button" class="gallery-nav next" data-step="1" aria-label="下一张">
+          <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+        </button>
+        <p class="gallery-counter"><span data-current>1</span> / {{ photo_count }}</p>
+        {% endif %}
+      </div>
+      {% if photo_count > 1 %}
+      <div class="gallery-thumbs">
+        {% for src in image_urls %}
+        <button type="button" class="gallery-thumb{% if loop.first %} active{% endif %}"
+                data-index="{{ loop.index0 }}" aria-label="第 {{ loop.index }} 张">
+          <img src="{{ src }}" alt="" loading="lazy">
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
     <h1>{{ item.title }}</h1>
     <div class="detail-price">
       <span class="price">¥{{ item.price_display }}</span>
@@ -14,9 +52,13 @@
     </dl>
     <p>{{ item.description }}</p>
     {% if can_buy %}
-    <form action="{{ url_for('place_order', item_id=item.id) }}" method="post">
-      <button type="submit" class="btn-accent">购买</button>
+    <form action="{{ url_for('place_order', item_id=item.id) }}" method="post"
+          onsubmit="return confirm('确认下单？下单后这件商品会为你保留，等卖家接单后约见面交易。');">
+      {{ csrf_field() }}
+      <button type="submit" class="btn-accent">下单，等卖家接单</button>
     </form>
+    <p class="order-hint">下单后商品为卖家保留，卖家接单后你们约定见面交易，双方各自确认才完成。
+      {% if order_timeout_minutes %}卖家 {{ '%g'|format(order_timeout_minutes / 60) }} 小时内未接单，订单会自动取消、商品重新上架。{% endif %}</p>
     {% endif %}
   </div>
 
@@ -25,7 +67,70 @@
     <p class="meta">卖家：{{ item.seller_name }}</p>
     {% if g.user %}
       <p class="meta">联系方式：{{ item.seller_contact or '卖家未填写联系方式' }}</p>
+      {% if g.user.id != item.seller_id %}
+      <a class="chat-btn" href="{{ url_for('thread', item_id=item.id, buyer_id=g.user.id) }}">
+        <svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>
+        问问卖家 / 议个价
+      </a>
+      {% endif %}
     {% endif %}
   </aside>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if image_urls|length > 1 %}
+<script>
+(function () {
+  var root = document.querySelector('[data-gallery]');
+  if (!root) return;
+  var track = root.querySelector('.gallery-track');
+  var slides = root.querySelectorAll('.gallery-slide');
+  var counter = root.querySelector('[data-current]');
+  var thumbs = root.querySelectorAll('.gallery-thumb');
+  var navs = root.querySelectorAll('.gallery-nav');
+  if (!track || !slides.length) return;
+
+  // 每张幻灯片正好占满容器宽度，所以当前页 = scrollLeft / 宽度，不依赖 offset 计算
+  var reduce = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function current() {
+    if (!track.clientWidth) return 0;
+    return Math.round(track.scrollLeft / track.clientWidth);
+  }
+  function goTo(i) {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    track.scrollTo({ left: i * track.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
+  }
+  function sync() {
+    var i = current();
+    if (counter) counter.textContent = String(i + 1);
+    for (var k = 0; k < thumbs.length; k++) {
+      thumbs[k].classList.toggle('active', k === i);
+    }
+  }
+  for (var a = 0; a < navs.length; a++) {
+    navs[a].addEventListener('click', function () {
+      goTo(current() + Number(this.dataset.step));
+    });
+  }
+  for (var b = 0; b < thumbs.length; b++) {
+    thumbs[b].addEventListener('click', function () {
+      goTo(Number(this.dataset.index));
+    });
+  }
+  track.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(current() - 1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); goTo(current() + 1); }
+  });
+  var ticking = false;
+  track.addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { ticking = false; sync(); });
+  }, { passive: true });
+  sync();
+})();
+</script>
+{% endif %}
 {% endblock %}

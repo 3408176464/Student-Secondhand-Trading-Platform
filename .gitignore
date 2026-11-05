@@ -1,4 +1,14 @@
 __pycache__/
 *.pyc
-*.db
 desktop.ini
+.idea/
+
+# 示例数据库入库：里面有 31 件商品与 24 张图片的对应关系，clone 下来直接能跑。
+# 若以后不想跟踪数据库改动，取消下面这行注释即可。
+# *.db
+
+# manage.py backup 的产物
+campus_market/backup/
+
+# 本地截图
+屏幕截图*.png
